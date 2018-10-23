@@ -55,6 +55,8 @@ namespace open3mod
         int[] renderBuffer = new int[numBuffers];
         int[] depthBuffer = new int[numBuffers];
         int[] frameBuffer = new int[numBuffers * 2];
+        int[] frameBufferCore = new int[numBuffers];
+        int[] frameBufferCompat = new int[numBuffers];
         int[] pixelPackBuffer = new int[numBuffers];
         int[] pixelUnpackBuffer = new int[numBuffers];
         public bool initialized = false;
@@ -95,6 +97,8 @@ namespace open3mod
         /// <returns></returns>
         public void BindBuffers(int frameIndex, int renderIndex)
         {
+            GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, frameBuffer[frameIndex]);
+            GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, frameBuffer[frameIndex]);
             GL.BindFramebuffer(FramebufferTarget.Framebuffer, frameBuffer[frameIndex]);
             GL.FramebufferRenderbuffer(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, RenderbufferTarget.Renderbuffer, renderBuffer[renderIndex]);
             GL.FramebufferRenderbuffer(FramebufferTarget.Framebuffer, FramebufferAttachment.DepthStencilAttachment, RenderbufferTarget.Renderbuffer, depthBuffer[renderIndex]);
@@ -111,9 +115,11 @@ namespace open3mod
         /// <returns></returns>
         public void InitGlControl(int videoSizeX, int videoSizeY)
         {
+            ErrorCode err = GL.GetError();//nVidia does not lie something at real beginning
+            RenderControl.GLError("InitializeGLControl");
+
             _videoSize.Width = videoSizeX;
             _videoSize.Height = videoSizeY;
-            GL.GenFramebuffers(numBuffers * 2, frameBuffer);
             GL.GenRenderbuffers(numBuffers, renderBuffer);
             GL.GenRenderbuffers(numBuffers, depthBuffer);
             GL.GenBuffers(numBuffers, pixelPackBuffer);
@@ -138,6 +144,10 @@ namespace open3mod
 
             this.MakeCurrent();
             VSync = false;
+            GL.GenFramebuffers(numBuffers, frameBufferCompat);
+            frameBuffer[0] = frameBufferCompat[0];
+            frameBuffer[2] = frameBufferCompat[1];
+            frameBuffer[4] = frameBufferCompat[2];
             BindBuffers(0, 0);
             BindBuffers(2, 1);
             BindBuffers(4, 2);
@@ -149,6 +159,10 @@ namespace open3mod
             GL.BindBuffer(BufferTarget.PixelUnpackBuffer, 0);
 
             glCore.MakeCurrent();
+            GL.GenFramebuffers(numBuffers, frameBufferCore);
+            frameBuffer[1] = frameBufferCore[0];
+            frameBuffer[3] = frameBufferCore[1];
+            frameBuffer[5] = frameBufferCore[2];
             glCore.VSync = false;
             BindBuffers(1, 0);
             BindBuffers(3, 1);
@@ -261,6 +275,8 @@ namespace open3mod
                 GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, 0);
                 GL.DrawBuffer(DrawBufferMode.Back);
                 GL.BlitFramebuffer(Left, Top, Width, Height, Left, Top, Width, Height, ClearBufferMask.ColorBufferBit, BlitFramebufferFilter.Nearest);
+                RenderControl.GLError("BLIT-toSC");
+
             }
         }
 
@@ -297,8 +313,14 @@ namespace open3mod
         public void CopyVideoFramebuffers(int src, int dest)
         {
             GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, frameBuffer[src]);
+            RenderControl.GLError("BLIT-Copy1");
             GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, frameBuffer[dest]);
+            RenderControl.GLError("BLIT-Copy2");
+            GL.DrawBuffer(DrawBufferMode.ColorAttachment0);
+            RenderControl.GLError("BLIT-Copy3");
             GL.BlitFramebuffer(0, 0, _videoSize.Width - 1, _videoSize.Height - 1, 0, 0, _videoSize.Width - 1, _videoSize.Height - 1, ClearBufferMask.ColorBufferBit, BlitFramebufferFilter.Linear);
+            RenderControl.GLError("BLIT-Copy");
+
         }
 
         public Bitmap ReadFramebufferTest()

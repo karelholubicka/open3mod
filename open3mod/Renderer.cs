@@ -47,6 +47,7 @@ namespace open3mod
     {
         public bool showTimeTrack = false;
         public string timeTracking = "";
+        public bool renderIO = false;
 
         private readonly MainWindow _mainWindow;
         private readonly TextOverlay _textOverlay;
@@ -229,6 +230,8 @@ namespace open3mod
         ///    needs to be fired already.</param>
         internal Renderer(MainWindow mainWindow)
         {
+            renderIO = MainWindow.useIO;
+            //renderIO = true;
             _mainWindow = mainWindow;
             _rendererContext = (GraphicsContext)GraphicsContext.CurrentContext;
             LoadHudImages();
@@ -299,7 +302,7 @@ namespace open3mod
 
             renderControl.SetRenderTarget(RenderControl.RenderTarget.ScreenCore);
             RenderControl.GLInfo("ScreenCore");
-            if (MainWindow.useIO)
+            if (renderIO)
             {
                 _shaderChromakey = Shader.FromResource("open3mod.Shaders.ChromakeyVertexShader.glsl", "open3mod.Shaders.ChromakeyFragmentShader.glsl", "");
                 //   _shaderChromakey = Shader.FromResource("open3mod.Shaders.ChromakeyVertexShader.glsl", "open3mod.Shaders.EmptyFragmentShader.glsl", "");
@@ -443,11 +446,14 @@ namespace open3mod
             {
                 GL.DeleteTexture(modernGLTextureType[i]);
             }
-
+            if (renderIO)
+            {
+                _shaderChromakey.Dispose();
+            }
+          
             _rendererContext.MakeCurrent(renderControl.WindowInfo);
             if (MainWindow.useIO)
             {
-                _shaderChromakey.Dispose();
                 for (int i = 0; i < NDISender.NDIchannels; i++)
                 {
                     _NDISender.DisposeSender(streamName[i]);
@@ -601,39 +607,37 @@ namespace open3mod
                             }
                         }
                     }
-                GL.BindBuffer(BufferTarget.PixelPackBuffer, 0);
-                GL.BindBuffer(BufferTarget.PixelUnpackBuffer, 0);
-
-                timeTrack("10 - Tex3Fin");
+                    GL.BindBuffer(BufferTarget.PixelPackBuffer, 0);
+                    GL.BindBuffer(BufferTarget.PixelUnpackBuffer, 0);
+                    timeTrack("10 - Tex3Fin");
+                }
+                if (renderIO)
+                { 
                 // render canvas to #2 and texture (no lighting??) 
                 // _camera2Controller = ui.ActiveViews[(int)ui.ActiveViewIndex].ActiveCameraControllerForView();
                 _cameraController[activeCamera].SetScenePartMode(ScenePartMode.GreenScreen);
                 renderControl.SetRenderTarget((RenderControl.RenderTarget)((int)(RenderControl.RenderTarget.VideoCompat) + (int)GraphicsSettings.Default.RenderingBackend));
                 DrawVideoViewport(_cameraController[activeCamera], activeTab, Tab.ViewIndex.Index3);
                 renderControl.SetRenderTarget(RenderControl.RenderTarget.VideoSSCompat);
+                    //  renderControl.SetRenderTarget((RenderControl.RenderTarget)((int)(RenderControl.RenderTarget.VideoSSCompat) + (int)GraphicsSettings.Default.RenderingBackend));
 
-                //                renderControl.SetRenderTarget((RenderControl.RenderTarget)((int)(RenderControl.RenderTarget.VideoSSCompat) + (int)GraphicsSettings.Default.RenderingBackend));
-                GL.BindTexture(TextureTarget.Texture2D, _canvasTexture);
-                GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, _canvasTexture, 0);
-                renderControl.CopyVideoFramebuffers(2, 4);//from MS to SS
-                renderControl.BindBuffers((4 + (int)GraphicsSettings.Default.RenderingBackend), 2);
-                renderControl.BindBuffers(4, 2);
-                timeTrack("13 - MaskFin");
+                    GL.BindTexture(TextureTarget.Texture2D, _canvasTexture);
+                    GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, _canvasTexture, 0);
+                    renderControl.CopyVideoFramebuffers(2, 4);//from MS to SS
+                  //  renderControl.BindBuffers((4 + (int)GraphicsSettings.Default.RenderingBackend), 2);
+                    renderControl.BindBuffers(4, 2);
 
-                //render frgd to FBO #2, move to SS#3 and move to texture
-                _cameraController[activeCamera].SetScenePartMode(ScenePartMode.Foreground);
+                    //render frgd to FBO #2, move to SS#3 and move to texture
+                    _cameraController[activeCamera].SetScenePartMode(ScenePartMode.Foreground);
                 renderControl.SetRenderTarget((RenderControl.RenderTarget)((int)(RenderControl.RenderTarget.VideoCompat) + (int)GraphicsSettings.Default.RenderingBackend));
                 DrawVideoViewport(_cameraController[activeCamera], activeTab, Tab.ViewIndex.Index1);
                 renderControl.SetRenderTarget(RenderControl.RenderTarget.VideoSSCompat);
-                //                renderControl.SetRenderTarget((RenderControl.RenderTarget)((int)(RenderControl.RenderTarget.VideoSSCompat) + (int)GraphicsSettings.Default.RenderingBackend));
                 GL.BindTexture(TextureTarget.Texture2D, _foregroundTexture);
                 GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, _foregroundTexture, 0);
                 renderControl.CopyVideoFramebuffers(2, 4);//from MS to SS
 
                 //Bitmap testBmp = renderControl.ReadTextureTest();
                 // testBmp.Dispose();
-
-                renderControl.BindBuffers((4 + (int)GraphicsSettings.Default.RenderingBackend), 2);
                 renderControl.BindBuffers(4, 2);
                 timeTrack("14 - FGFin");
 
@@ -643,10 +647,11 @@ namespace open3mod
                 renderControl.SetRenderTarget((RenderControl.RenderTarget)((int)(RenderControl.RenderTarget.VideoCompat) + (int)GraphicsSettings.Default.RenderingBackend));
                 DrawVideoViewport(_cameraController[activeCamera], activeTab, Tab.ViewIndex.Index2);
                 RenderControl.GLError("BgStart");
-                renderControl.SetRenderTarget(RenderControl.RenderTarget.VideoSSCore);
+                renderControl.SetRenderTarget(RenderControl.RenderTarget.VideoSSCompat);
                 renderControl.CopyVideoFramebuffers(2, 4);//from MS to SS
+                renderControl.SetRenderTarget(RenderControl.RenderTarget.VideoSSCore);
 
-                RenderControl.GLError("SwitchToCore1");
+                    RenderControl.GLError("SwitchToCore1");
                 // and chromakey+fgd over
                 timeTrack("15 - BGFin");
 
@@ -735,14 +740,15 @@ namespace open3mod
                     GL.BindBuffer(BufferTarget.PixelUnpackBuffer, 0);
                 }
 
-                renderControl.CopyVideoFramebuffers(4, 2);
-                renderControl.SetRenderTarget(RenderControl.RenderTarget.VideoSSCompat);
+                    renderControl.SetRenderTarget(RenderControl.RenderTarget.VideoSSCore);
+                    renderControl.CopyVideoFramebuffers(5, 3);
+                renderControl.SetRenderTarget(RenderControl.RenderTarget.VideoSSCore);
                 GL.BindTexture(TextureTarget.Texture2D, _compositeTexture);
                 GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, _compositeTexture, 0);
-                renderControl.CopyVideoFramebuffers(2, 4);
-                renderControl.BindBuffers(4, 2);
+                renderControl.CopyVideoFramebuffers(3, 5);
+                renderControl.BindBuffers(5, 2);
 
-                timeTrack("13 - MaskFin");
+                timeTrack("16 - Composite reread");
 
                     // Bitmap testBmp = renderControl.ReadVideoTextureTest();
                     // testBmp.Dispose();
@@ -776,7 +782,7 @@ namespace open3mod
                     ++index;
                 }
 
-                timeTrack("11 - ViewportsNonActFin");
+                timeTrack("17 - ViewportsNonActFin");
                 renderControl.SetRenderTarget(RenderControl.RenderTarget.ScreenCompat);
                 var activeVp = ui.ActiveViews[(int)ui.ActiveViewIndex];
                 Debug.Assert(activeVp != null);
@@ -802,7 +808,7 @@ namespace open3mod
                 }
 
                 //doladit - textury IN, rychlost, když nejede VR tak active controller
-                timeTrack("16 - CompositeFin");
+                timeTrack("18 - CompositeFin");
 
                 //move buffers to NDI
 
@@ -835,8 +841,8 @@ namespace open3mod
                         GL.UnmapBuffer(BufferTarget.PixelPackBuffer);
                     }
                     GL.BindBuffer(BufferTarget.PixelPackBuffer, 0); //better to have parallelized in case we mark all streams for testing, this takes 9ms each
-                    timeTrack("18 - BufDownloaded");
-                    if ((CoreSettings.CoreSettings.Default.SendNDI) && (!MainWindow.useIO))
+                    timeTrack("19 - BufDownloaded");
+                    if (CoreSettings.CoreSettings.Default.SendNDI)
                     {
                         Parallel.Invoke(() =>
                         {
@@ -896,9 +902,9 @@ namespace open3mod
                     DrawNoSceneSplash();
                 }
             }
-            timeTrack("19 - BfDrawOverlay");
+            timeTrack("22 - BfDrawOverlay");
             _textOverlay.Draw();
-            timeTrack("20 - OverlayDrawed");
+            timeTrack("23 - OverlayDrawed");
 
             // draw viewport finishing (i.e. contours)
             if (ui.ActiveScene != null && ui.ActiveViewMode != Tab.ViewMode.Single)
@@ -926,11 +932,11 @@ namespace open3mod
 
             // handle other Gl jobs such as drawing preview images - components to separate FBO
             // use this event to register their jobs.
-            timeTrack("21 - BfExtraDrawJob");
+            timeTrack("24 - BfExtraDrawJob");
             renderControl.SetRenderTarget(RenderControl.RenderTarget.ScreenCompat);
             OnGlExtraDrawJob(); //render previews to separate FBO
             renderControl.SetRenderTarget(RenderControl.RenderTarget.ScreenCompat);
-            timeTrack("22 - RenderFinished");
+            timeTrack("25 - RenderFinished");
             totalRenderedFrames++;
         }
 
@@ -1330,7 +1336,7 @@ namespace open3mod
             {
                 //                renderControl.SetRenderTarget(RenderControl.RenderTarget.ScreenCompat);//returning from extra draw job may cause problem
                 GL.Viewport((int)(xs * w), (int)(ys * h), vw, vh);
-                if (view.GetScenePartMode() > ScenePartMode.All)
+                if ((view.GetScenePartMode() > ScenePartMode.All)&& renderIO)
                 {
                     renderControl.SetRenderTarget(RenderControl.RenderTarget.ScreenCore);
                     int md = 0;

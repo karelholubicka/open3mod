@@ -513,31 +513,31 @@ namespace open3mod
                     _renderer.skipFrames = 1;
                     break;
                 case Keys.B:
-                    if (useIO) UiState.ActiveTab.ActiveCameraController.SetScenePartMode(ScenePartMode.Background);
+                    if (_renderer.renderIO) UiState.ActiveTab.ActiveCameraController.SetScenePartMode(ScenePartMode.Background);
                     break;
                 case Keys.F:
-                    if (useIO) UiState.ActiveTab.ActiveCameraController.SetScenePartMode(ScenePartMode.Foreground);
+                    if (_renderer.renderIO) UiState.ActiveTab.ActiveCameraController.SetScenePartMode(ScenePartMode.Foreground);
                     break;
                 case Keys.X:
-                    if (useIO) UiState.ActiveTab.ActiveCameraController.SetScenePartMode(ScenePartMode.Others);
+                    if (_renderer.renderIO) UiState.ActiveTab.ActiveCameraController.SetScenePartMode(ScenePartMode.Others);
                     break;
                 case Keys.C:
-                    if (useIO) UiState.ActiveTab.ActiveCameraController.SetScenePartMode(ScenePartMode.Camera);
+                    if (_renderer.renderIO) UiState.ActiveTab.ActiveCameraController.SetScenePartMode(ScenePartMode.Camera);
                     break;
                 case Keys.L:
                     UiState.ActiveTab.ActiveCameraController.SetScenePartMode(ScenePartMode.All);
                     break;
                 case Keys.J:
-                    if (useIO) UiState.ActiveTab.ActiveCameraController.SetScenePartMode(ScenePartMode.CameraCancelColor);
+                    if (_renderer.renderIO) UiState.ActiveTab.ActiveCameraController.SetScenePartMode(ScenePartMode.CameraCancelColor);
                     break;
                 case Keys.M:
-                    if (useIO) UiState.ActiveTab.ActiveCameraController.SetScenePartMode(ScenePartMode.Composite);
+                    if (_renderer.renderIO) UiState.ActiveTab.ActiveCameraController.SetScenePartMode(ScenePartMode.Composite);
                     break;
                 case Keys.K:
-                    if (useIO) UiState.ActiveTab.ActiveCameraController.SetScenePartMode(ScenePartMode.Keying);
+                    if (_renderer.renderIO) UiState.ActiveTab.ActiveCameraController.SetScenePartMode(ScenePartMode.Keying);
                     break;
                 case Keys.G:
-                    if (useIO) UiState.ActiveTab.ActiveCameraController.SetScenePartMode(ScenePartMode.GreenScreen);
+                    if (_renderer.renderIO) UiState.ActiveTab.ActiveCameraController.SetScenePartMode(ScenePartMode.GreenScreen);
                     break;
 
                 case Keys.Enter:
