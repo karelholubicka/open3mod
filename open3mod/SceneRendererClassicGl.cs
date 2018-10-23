@@ -38,30 +38,45 @@ namespace open3mod
     /// matrix stacks and glVertexN-family calls.
     /// </summary>
     public sealed class SceneRendererClassicGl : SceneRendererShared, ISceneRenderer
-    {        
-        private int _displayList;
-        private int _displayListAlpha;
+    {
+        private const int _displayListCount = 8;
+        private int[,] _displayList = new int[_displayListCount,2];
+        /* display lists:
+        0: Background;
+        1: Else (always visible);
+        2: Foreground;
+        3: GreenScreen;
+        4: BackgroundAnimated;
+        5: ElseAnimated (always visible);
+        6: ForegroundAnimated;
+        7: GreenScreenAnimated;
+        Animated - list is refreshed each frame
+        */
         private RenderFlags _lastFlags;
-      
+        private bool wasAnimated;
+
 
         internal SceneRendererClassicGl(Scene owner, Vector3 initposeMin, Vector3 initposeMax)
             : base(owner, initposeMin, initposeMax)
         {
-            
+
         }
 
 
         public void Dispose()
         {
-            if (_displayList != 0)
+            for (var i = 0; i < _displayListCount;i++)
             {
-                GL.DeleteLists(_displayList, 1);
-                _displayList = 0;
-            }
-            if (_displayListAlpha != 0)
-            {
-                GL.DeleteLists(_displayListAlpha, 1);
-                _displayListAlpha = 0;
+                if (_displayList[i,0] != 0)
+                {
+                    GL.DeleteLists(_displayList[i, 0], 1);
+                    _displayList[i, 0] = 0;
+                }
+                if (_displayList[i, 1] != 0)
+                {
+                    GL.DeleteLists(_displayList[i, 1], 1);
+                    _displayList[i,1] = 0;
+                }
             }
             GC.SuppressFinalize(this);
         }
@@ -88,49 +103,44 @@ namespace open3mod
         /// <summary>
         /// <see cref="ISceneRenderer.Render"/>
         /// </summary>   
-        public void Render(ICameraController cam, Dictionary<Node, List<Mesh>> visibleMeshesByNode, 
-            bool visibleSetChanged, 
+        public void Render(ICameraController cam, Dictionary<Node, List<Mesh>> visibleMeshesByNode,
+            bool visibleSetChanged,
             bool texturesChanged,
-            RenderFlags flags, 
+            RenderFlags flags,
             Renderer renderer)
-        {            
+        {
             GL.Disable(EnableCap.Texture2D);
             GL.Hint(HintTarget.PerspectiveCorrectionHint, HintMode.Nicest);
             GL.Enable(EnableCap.DepthTest);
-           
+
             if (flags.HasFlag(RenderFlags.Wireframe))
             {
                 GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Line);
             }
-
             var tmp = InitposeMax.X - InitposeMin.X;
             tmp = Math.Max(InitposeMax.Y - InitposeMin.Y, tmp);
             tmp = Math.Max(InitposeMax.Z - InitposeMin.Z, tmp);
-            var scale = 2.0f / tmp;     
-
-            // TODO: migrate general scale and this snippet to camcontroller code
+            int logScale = (int)Math.Truncate(Math.Log10(tmp*10/50)); //  Up to 50units max size = 50m: keep scale (for smaller scenes).
+            float scale = 1;
+            for (int i = 0; i < logScale;i++) scale = scale / 10;
+            Owner.Scale = scale;
             if (cam != null)
             {
-                cam.SetPivot(Owner.Pivot * (float)scale);
+            //       cam.SetPivot(Owner.Pivot * (float)scale); this does nothing (?) only makes controller dirty
             }
             var view = cam == null ? Matrix4.LookAt(0, 10, 5, 0, 0, 0, 0, 1, 0) : cam.GetView();
-
             GL.MatrixMode(MatrixMode.Modelview);
             GL.LoadMatrix(ref view);
+            GL.Scale(scale, scale, scale);
+            Owner.MaterialMapper.BeginScene(renderer, flags.HasFlag(RenderFlags.UseSceneLights)); //here we switch on lights
 
-            Owner.MaterialMapper.BeginScene(renderer);
-
-            if (flags.HasFlag(RenderFlags.Shaded))
+            if (flags.HasFlag(RenderFlags.ShowLightDirection)) //switch off for video??
             {
                 var dir = new Vector3(1, 1, 0);
                 var mat = renderer.LightRotation;
                 Vector3.TransformNormal(ref dir, ref mat, out dir);
-                    OverlayLightSource.DrawLightSource(dir);
+                OverlayLightSource.DrawLightSource(dir);
             }
-
-           
-            GL.Scale(scale, scale, scale);
-
 
             // If textures changed, we may need to upload some of them to VRAM.
             // it is important this happens here and not accidentially while
@@ -139,118 +149,141 @@ namespace open3mod
             {
                 UploadTextures();
             }
+            UploadDynamicTextures();
 
             GL.PushMatrix();
 
             // Build and cache Gl displaylists and update only when the scene changes.
-            // when the scene is being animated, this is bad because it changes every
-            // frame anyway. In this case  we don't use a displist.
+            // when the scene is being animated, this changes each frame
             var animated = Owner.SceneAnimator.IsAnimationActive;
-            if (_displayList == 0 || visibleSetChanged || texturesChanged || flags != _lastFlags || animated)
+            if (visibleSetChanged || texturesChanged || flags != _lastFlags || (animated && (Owner.NewFrame) || wasAnimated ))
             {
+                int startList = 4; //we update only 4 animation displists
+                if (visibleSetChanged || texturesChanged || flags != _lastFlags) startList = 0;
                 _lastFlags = flags;
 
                 // handle opaque geometry
-                if (!animated)
+                for (int currDispList = startList; currDispList < _displayListCount; currDispList++)
                 {
-                    if (_displayList == 0)
+                    if (_displayList[currDispList, 0] == 0) _displayList[currDispList, 0] = GL.GenLists(1);
+                    GL.NewList(_displayList[currDispList, 0], ListMode.Compile);
+                    var needAlpha = RecursiveRender(Owner.Raw.RootNode, visibleMeshesByNode, flags, animated, currDispList);
+                    if (flags.HasFlag(RenderFlags.ShowSkeleton))
                     {
-                        _displayList = GL.GenLists(1);
+                        RecursiveRenderNoScale(Owner.Raw.RootNode, visibleMeshesByNode, flags, 1.0f / scale, animated, currDispList);
                     }
-                    
-                    GL.NewList(_displayList, ListMode.Compile);
-                }
-                
-                var needAlpha = RecursiveRender(Owner.Raw.RootNode, visibleMeshesByNode, flags, animated);
-
-                if (flags.HasFlag(RenderFlags.ShowSkeleton))
-                {
-                    RecursiveRenderNoScale(Owner.Raw.RootNode, visibleMeshesByNode, flags, 1.0f / scale, animated);
-                }
-                if (flags.HasFlag(RenderFlags.ShowNormals))
-                {
-                    RecursiveRenderNormals(Owner.Raw.RootNode, visibleMeshesByNode, flags, 1.0f / scale, animated, Matrix4.Identity);
-                }
-
-                if (!animated)
-                {
+                    if (flags.HasFlag(RenderFlags.ShowNormals))
+                    {
+                        RecursiveRenderNormals(Owner.Raw.RootNode, visibleMeshesByNode, flags, 1.0f / scale, animated, Matrix4.Identity, currDispList);
+                    }
                     GL.EndList();
-                }
-
-                if (needAlpha)
-                {
-                    // handle semi-transparent geometry
-                    if (!animated)
+                    if (needAlpha)
                     {
-                        if (_displayListAlpha == 0)
+                        // handle semi-transparent geometry
+                        if (_displayList[currDispList, 1] == 0)
                         {
-                            _displayListAlpha = GL.GenLists(1);
+                            _displayList[currDispList, 1] = GL.GenLists(1);
                         }
-                        GL.NewList(_displayListAlpha, ListMode.Compile);
-                    }
-                    RecursiveRenderWithAlpha(Owner.Raw.RootNode, visibleMeshesByNode, flags, animated);
-
-                    if (!animated)
-                    {
+                        GL.NewList(_displayList[currDispList, 1], ListMode.Compile);
+                        RecursiveRenderWithAlpha(Owner.Raw.RootNode, visibleMeshesByNode, flags, animated, currDispList);
                         GL.EndList();
                     }
-                }
-                else if (_displayListAlpha != 0)
-                {
-                    GL.DeleteLists(_displayListAlpha, 1);
-                    _displayListAlpha = 0;
+                    else if (_displayList[currDispList, 1] != 0)
+                    {
+                        GL.DeleteLists(_displayList[currDispList, 1], 1);
+                        _displayList[currDispList, 1] = 0;
+                    }
                 }
             }
-
-            if (!animated)
+            
+            Owner.NewFrame = false;
+            wasAnimated = animated;
+            /* display lists:
+            0: Background;
+            1: Else (always visible);
+            2: Foreground;
+            3: GreenScreen;
+            4: BackgroundAnimated;
+            5: ElseAnimated (always visible);
+            6: ForegroundAnimated;
+            7: GreenScreenAnimated;
+            Animated - list is refreshed each frame
+            */
+            switch (cam.GetScenePartMode())
             {
-                GL.CallList(_displayList);
-                if (_displayListAlpha != 0)
-                {
-                    GL.CallList(_displayListAlpha);
-                }
+                case ScenePartMode.Background:
+                    if (_displayList[0, 0] != 0) GL.CallList(_displayList[0, 0]);
+                    if (_displayList[4, 0] != 0) GL.CallList(_displayList[4, 0]);
+                    if (_displayList[0, 1] != 0) GL.CallList(_displayList[0, 1]);
+                    if (_displayList[4, 1] != 0) GL.CallList(_displayList[4, 1]);
+                    break;
+                case ScenePartMode.Foreground:
+                    if (_displayList[2, 0] != 0) GL.CallList(_displayList[2, 0]);
+                    if (_displayList[6, 0] != 0) GL.CallList(_displayList[6, 0]);
+                    if (_displayList[2, 1] != 0) GL.CallList(_displayList[2, 1]);
+                    if (_displayList[6, 1] != 0) GL.CallList(_displayList[6, 1]);
+                    break;
+                case ScenePartMode.Others:
+                    if (_displayList[1, 0] != 0) GL.CallList(_displayList[1, 0]);
+                    if (_displayList[5, 0] != 0) GL.CallList(_displayList[5, 0]);
+                    if (_displayList[1, 1] != 0) GL.CallList(_displayList[1, 1]);
+                    if (_displayList[5, 1] != 0) GL.CallList(_displayList[5, 1]);
+                    break;
+                case ScenePartMode.GreenScreen:
+                    if (_displayList[3, 0] != 0) GL.CallList(_displayList[3, 0]);
+                    if (_displayList[7, 0] != 0) GL.CallList(_displayList[7, 0]);
+                    if (_displayList[3, 1] != 0) GL.CallList(_displayList[3, 1]);
+                    if (_displayList[7, 1] != 0) GL.CallList(_displayList[7, 1]);
+                    break;
+                case ScenePartMode.All:
+                    for (int currDispList = 0; currDispList < _displayListCount; currDispList++)
+                    {
+                        if (_displayList[currDispList, 0] != 0) GL.CallList(_displayList[currDispList, 0]);
+                        if (_displayList[currDispList, 1] != 0) GL.CallList(_displayList[currDispList, 1]);
+                    }
+                    break;
+                default: break;//at other modes we do not render anything
             }
 
             GL.PopMatrix();
-
             // always switch back to FILL
+            Owner.MaterialMapper.EndScene(renderer);
             GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Fill);
             GL.Disable(EnableCap.DepthTest);
 
 #if TEST
-            GL.Enable(EnableCap.ColorMaterial);
-            
+                                    GL.Enable(EnableCap.ColorMaterial);
 
-            // TEST CODE to visualize mid point (pivot) and origin
-            GL.LoadMatrix(ref view);
-            GL.Begin(BeginMode.Lines);
 
-            GL.Vertex3((InitposeMin + InitposeMax) * 0.5f * (float)scale);
-            GL.Color3(0.0f, 1.0f, 0.0f);
-            GL.Vertex3(0,0,0);
-            GL.Color3(0.0f, 1.0f, 0.0f);
-            GL.Vertex3((InitposeMin + InitposeMax) * 0.5f * (float)scale);
-            GL.Color3(0.0f, 1.0f, 0.0f);
+                                    // TEST CODE to visualize mid point (pivot) and origin
+                                    GL.LoadMatrix(ref view);
+                                    GL.Begin(BeginMode.Lines);
 
-            GL.Vertex3(10, 10, 10);
-            GL.Color3(0.0f, 1.0f, 0.0f);
-            GL.End();
+                                    GL.Vertex3((InitposeMin + InitposeMax) * 0.5f * (float)scale);
+                                    GL.Color3(0.0f, 1.0f, 0.0f);
+                                    GL.Vertex3(0,0,0);
+                                    GL.Color3(0.0f, 1.0f, 0.0f);
+                                    GL.Vertex3((InitposeMin + InitposeMax) * 0.5f * (float)scale);
+                                    GL.Color3(0.0f, 1.0f, 0.0f);
+
+                                    GL.Vertex3(10, 10, 10);
+                                    GL.Color3(0.0f, 1.0f, 0.0f);
+                                    GL.End();
 #endif
-            Owner.MaterialMapper.EndScene(renderer);
             GL.Disable(EnableCap.Texture2D);
-            
+
         }
 
+        protected override void PushWorld(ref Matrix4 world)
+        {
+            GL.PushMatrix();
+            GL.MultMatrix(ref world);
+        }
 
-         protected override void PushWorld(ref Matrix4 world) {
-             GL.PushMatrix();
-             GL.MultMatrix(ref world);
-         }
-
-         protected override void PopWorld()
-         {
-             GL.PopMatrix();
-         }
+        protected override void PopWorld()
+        {
+            GL.PopMatrix();
+        }
 
         /// <summary>
         /// Draw a mesh using either its given material or a transparent "ghost" material.
@@ -267,14 +300,14 @@ namespace open3mod
         {
             if (showGhost)
             {
-                Owner.MaterialMapper.ApplyGhostMaterial(mesh, Owner.Raw.Materials[mesh.MaterialIndex], 
-                    flags.HasFlag(RenderFlags.Shaded));
+                Owner.MaterialMapper.ApplyGhostMaterial(mesh, Owner.Raw.Materials[mesh.MaterialIndex],
+                    flags.HasFlag(RenderFlags.Shaded), flags.HasFlag(RenderFlags.ForceTwoSidedLighting));
             }
             else
             {
-                Owner.MaterialMapper.ApplyMaterial(mesh, Owner.Raw.Materials[mesh.MaterialIndex], 
-                    flags.HasFlag(RenderFlags.Textured), 
-                    flags.HasFlag(RenderFlags.Shaded));
+                Owner.MaterialMapper.ApplyMaterial(mesh, Owner.Raw.Materials[mesh.MaterialIndex],
+                    flags.HasFlag(RenderFlags.Textured),
+                    flags.HasFlag(RenderFlags.Shaded),flags.HasFlag(RenderFlags.ForceTwoSidedLighting));
             }
 
             if (GraphicsSettings.Default.BackFaceCulling)
@@ -369,9 +402,9 @@ namespace open3mod
         /// <param name="flags"></param>
         /// <param name="invGlobalScale"></param>
         /// <param name="animated"></param>
-        private void RecursiveRenderNoScale(Node node, Dictionary<Node, List<Mesh>> visibleMeshesByNode, RenderFlags flags, 
+        private void RecursiveRenderNoScale(Node node, Dictionary<Node, List<Mesh>> visibleMeshesByNode, RenderFlags flags,
             float invGlobalScale,
-            bool animated)
+            bool animated, int currDispList)
         {
             // TODO unify our use of OpenTK and Assimp matrices 
             Matrix4x4 m;
@@ -385,7 +418,7 @@ namespace open3mod
             {
                 m = node.Transform;
             }
-            
+
             // get rid of the scaling part of the matrix
             // TODO this can be done faster and Decompose() doesn't handle
             // non positively semi-definite matrices correctly anyway.
@@ -402,7 +435,7 @@ namespace open3mod
             mConv.Transpose();
 
             if (flags.HasFlag(RenderFlags.ShowSkeleton))
-            {           
+            {
                 var highlight = false;
                 if (visibleMeshesByNode != null)
                 {
@@ -422,14 +455,14 @@ namespace open3mod
                         }
                     }
                 }
-                OverlaySkeleton.DrawSkeletonBone(node, invGlobalScale,highlight);
+                OverlaySkeleton.DrawSkeletonBone(node, invGlobalScale, highlight);
             }
 
             GL.PushMatrix();
             GL.MultMatrix(ref mConv);
             for (int i = 0; i < node.ChildCount; i++)
             {
-                RecursiveRenderNoScale(node.Children[i], visibleMeshesByNode, flags, invGlobalScale, animated);
+                RecursiveRenderNoScale(node.Children[i], visibleMeshesByNode, flags, invGlobalScale, animated, currDispList);
             }
             GL.PopMatrix();
         }
@@ -446,7 +479,7 @@ namespace open3mod
         private void RecursiveRenderNormals(Node node, Dictionary<Node, List<Mesh>> visibleMeshesByNode, RenderFlags flags,
             float invGlobalScale,
             bool animated,
-            Matrix4 transform)
+            Matrix4 transform, int currDispList)
         {
             // TODO unify our use of OpenTK and Assimp matrices
             Matrix4 mConv;
@@ -478,7 +511,7 @@ namespace open3mod
                         {
                             continue;
                         }
-
+                        if (currDispList == GetDispList(node.Name))
                         OverlayNormals.DrawNormals(node, index, mesh, mesh.HasBones && animated ? Skinner : null, invGlobalScale, transform);
                     }
                 }
@@ -486,10 +519,10 @@ namespace open3mod
 
             for (int i = 0; i < node.ChildCount; i++)
             {
-                RecursiveRenderNormals(node.Children[i], visibleMeshesByNode, flags, invGlobalScale, animated, transform);
+                RecursiveRenderNormals(node.Children[i], visibleMeshesByNode, flags, invGlobalScale, animated, transform, currDispList);
             }
         }
     }
 }
 
-/* vi: set shiftwidth=4 tabstop=4: */ 
+/* vi: set shiftwidth=4 tabstop=4: */

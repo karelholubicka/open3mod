@@ -40,7 +40,6 @@ namespace open3mod
             Pitch = 3,
             Roll = 4,
             Yaw = 5,
-
             _Max = 6,
         };
 

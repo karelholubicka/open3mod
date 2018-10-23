@@ -132,6 +132,8 @@
             this.imageListIconsHierarchy.Images.SetKeyName(2, "joints.png");
             this.imageListIconsHierarchy.Images.SetKeyName(3, "mesh.png");
             this.imageListIconsHierarchy.Images.SetKeyName(4, "HierarchyIconHidden.png");
+            this.imageListIconsHierarchy.Images.SetKeyName(5, "camera16x16.bmp");
+            this.imageListIconsHierarchy.Images.SetKeyName(6, "lightbulb16x16.BMP");
             // 
             // labelNodeStats
             // 
@@ -266,7 +268,7 @@
             this.toolStripSeparator4,
             this.detailsToolStripMenuItem1});
             this.contextMenuStripMesh.Name = "contextMenuStripMesh";
-            this.contextMenuStripMesh.Size = new System.Drawing.Size(174, 170);
+            this.contextMenuStripMesh.Size = new System.Drawing.Size(174, 148);
             // 
             // toolStripMenuItemRenameMesh
             // 

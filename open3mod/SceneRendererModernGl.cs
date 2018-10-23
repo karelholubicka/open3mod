@@ -43,7 +43,6 @@ namespace open3mod
             _meshes = new RenderMesh[owner.Raw.MeshCount];
         }
 
-
         /// <summary>
         /// <see cref="ISceneRenderer.Update"/>
         /// </summary>   
@@ -56,70 +55,108 @@ namespace open3mod
         /// <summary>
         /// <see cref="ISceneRenderer.Render"/>
         /// </summary>   
+        /// </summary>   
         public void Render(ICameraController cam, Dictionary<Node, List<Mesh>> visibleMeshesByNode,
             bool visibleSetChanged,
             bool texturesChanged,
             RenderFlags flags, 
             Renderer renderer)
         {
-            GL.Disable(EnableCap.Texture2D);
-            GL.Hint(HintTarget.PerspectiveCorrectionHint, HintMode.Nicest);
+            RenderControl.GLError("ModernRenderStart");
+
             GL.Enable(EnableCap.DepthTest);
             GL.FrontFace(FrontFaceDirection.Ccw);
-
             if (flags.HasFlag(RenderFlags.Wireframe))
             {
                 GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Line);
             }
+
+            var view = cam == null ? Matrix4.LookAt(0, 10, 5, 0, 0, 0, 0, 1, 0) : cam.GetView();
+
+            var tmp = InitposeMax.X - InitposeMin.X;
+            tmp = Math.Max(InitposeMax.Y - InitposeMin.Y, tmp);
+            tmp = Math.Max(InitposeMax.Z - InitposeMin.Z, tmp);
+            int logScale = (int)Math.Truncate(Math.Log10(tmp * 10 / 50)); //  Up to 50units max size = 50m: keep scale (for smaller scenes).
+            float scale = 1;
+            for (int i = 0; i < logScale; i++) scale = scale / 10;
+            Owner.Scale = scale;
+            Matrix4 world = Matrix4.Identity;//want to keep unity in our world
+
+
+            // set a proper perspective matrix for rendering
+            int[] CurrentViewport = new int[4];
+            GL.GetInteger(GetPName.Viewport, CurrentViewport);
+            var aspectRatio = (float)CurrentViewport[2]/CurrentViewport[3];
+            Matrix4 perspective = Matrix4.CreatePerspectiveFieldOfView(cam.GetFOV(), aspectRatio, renderer.zNear, renderer.zFar);
+            Owner.MaterialMapper.SetMatrices(world, view, perspective);
+            PushWorld(ref world);
+            Owner.MaterialMapper.BeginScene(renderer, flags.HasFlag(RenderFlags.UseSceneLights)); //here we switch on lights
 
             // If textures changed, we may need to upload some of them to VRAM.
             if (texturesChanged)
             {
                 UploadTextures();
             }
-
-            GL.MatrixMode(MatrixMode.Modelview);
-            var view = cam == null ? Matrix4.LookAt(0, 10, 5, 0, 0, 0, 0, 1, 0) : cam.GetView();
-
-            GL.MatrixMode(MatrixMode.Modelview);
-            GL.LoadMatrix(ref view);
-
-            var tmp = InitposeMax.X - InitposeMin.X;
-            tmp = Math.Max(InitposeMax.Y - InitposeMin.Y, tmp);
-            tmp = Math.Max(InitposeMax.Z - InitposeMin.Z, tmp);
-            tmp = 2.0f / tmp;
-
-            var world = Matrix4.Scale(tmp);
-            world *= Matrix4.CreateTranslation(-(InitposeMin + InitposeMax) * 0.5f);
-            PushWorld(ref world);
-            //
             var animated = Owner.SceneAnimator.IsAnimationActive;
-            var needAlpha = RecursiveRender(Owner.Raw.RootNode, visibleMeshesByNode, flags, animated);
-            if (flags.HasFlag(RenderFlags.ShowSkeleton) || flags.HasFlag(RenderFlags.ShowNormals))
+
+            int currDispList=0;
+            int count = 1;
+            switch (cam.GetScenePartMode())
             {
-                //RecursiveRenderNoScale(Owner.Raw.RootNode, visibleMeshesByNode, flags, 1.0f / tmp, animated);
+                case ScenePartMode.Background: currDispList = 0;break;
+                case ScenePartMode.Foreground: currDispList = 2; break;
+                case ScenePartMode.Others: currDispList = 1; break;
+                case ScenePartMode.GreenScreen: currDispList = 3; break;
+                case ScenePartMode.All: currDispList = 0;count = 4; break;
+                default: break;//at other modes we do not render anything
             }
 
-            if (needAlpha)
+            for (int countDispList = 0; countDispList < count; countDispList++)
             {
-                // handle semi-transparent geometry              
-                RecursiveRenderWithAlpha(Owner.Raw.RootNode, visibleMeshesByNode, flags, animated);
+
+                var needAlpha = RecursiveRender(Owner.Raw.RootNode, visibleMeshesByNode, flags, animated, currDispList);
+                var needAlphaAnim = RecursiveRender(Owner.Raw.RootNode, visibleMeshesByNode, flags, animated, currDispList + 4);
+                if (flags.HasFlag(RenderFlags.ShowSkeleton) || flags.HasFlag(RenderFlags.ShowNormals))
+                {
+                    //RecursiveRenderNoScale(Owner.Raw.RootNode, visibleMeshesByNode, flags, 1.0f / tmp, animated);
+                }
+                if (needAlpha)
+                {
+                    // handle semi-transparent geometry              
+                    RecursiveRenderWithAlpha(Owner.Raw.RootNode, visibleMeshesByNode, flags, animated, currDispList);
+                }
+                if (needAlphaAnim)
+                {
+                    // handle semi-transparent geometry              
+                    RecursiveRenderWithAlpha(Owner.Raw.RootNode, visibleMeshesByNode, flags, animated, currDispList + 4);
+                }
+                currDispList++;
+
+                /* RenderFlags application:
+                Wireframe = 0x1, - Scene renderer,OK
+        Shaded = 0x2, - MaterialMapper.ApplyMaterial, OK
+        ShowBoundingBoxes = 0x4,
+        ShowNormals = 0x8, - Scene renderer, unused in GL4
+        ShowSkeleton = 0x10,  - Scene renderer, unused in GL4
+        Textured = 0x20, - MaterialMapper.ApplyMaterial, OK
+        ShowGhosts = 0x40, unused, always ON, InternDrawMesh applies own showGhost to MaterialMapper.Apply(Ghost)Material,
+        UseSceneLights = 0x80, - MaterialMapper.BeginScene, OK
+        */
+
             }
             PopWorld();
-
             // always switch back to FILL
             GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Fill);
-
             GL.Disable(EnableCap.DepthTest);
-            GL.Disable(EnableCap.Texture2D);
-            GL.Disable(EnableCap.Lighting);
+            RenderControl.GLError("SceneRendererModernGLEnd");
         }
-
 
         private Stack<Matrix4> worlds = new Stack<Matrix4>();
         protected override void PushWorld(ref Matrix4 world)
         {
-            worlds.Push((worlds.Count > 0 ? worlds.Peek() : Matrix4.Identity) * world);
+            Matrix4 newWorld = world * (worlds.Count > 0 ? worlds.Peek() : Matrix4.Identity);
+            Owner.MaterialMapper.SetWorld(newWorld);
+            worlds.Push(newWorld);
         }
 
         protected override void PopWorld()
@@ -137,13 +174,13 @@ namespace open3mod
             if (showGhost)
             {
                 Owner.MaterialMapper.ApplyGhostMaterial(mesh, Owner.Raw.Materials[mesh.MaterialIndex],
-                    flags.HasFlag(RenderFlags.Shaded));
+                    flags.HasFlag(RenderFlags.Shaded), flags.HasFlag(RenderFlags.ForceTwoSidedLighting));
             }
             else
             {
                 Owner.MaterialMapper.ApplyMaterial(mesh, Owner.Raw.Materials[mesh.MaterialIndex],
                     flags.HasFlag(RenderFlags.Textured),
-                    flags.HasFlag(RenderFlags.Shaded));
+                    flags.HasFlag(RenderFlags.Shaded), flags.HasFlag(RenderFlags.ForceTwoSidedLighting));
             }
 
             if (GraphicsSettings.Default.BackFaceCulling)

@@ -32,7 +32,7 @@ namespace open3mod
         /// <summary>
         /// The main entry point for the application.
         /// </summary>
-        [STAThread]
+        [MTAThread]
         static void Main(string[] args)
         {
             MainWindow mainWindow = null;

@@ -20,17 +20,24 @@
 
 using System;
 using OpenTK;
+using System.Diagnostics;
+
 
 namespace open3mod
 {
     public class FpsCameraController : ICameraController
     {
         private Matrix4 _view;
-
+        private float _fovy = MathHelper.PiOver4;
+        private float _zNear = 0.01f;
+        private float _zFar = 100.0f;
         private Matrix4 _orientation;
         private Vector3 _translation;
+        private ScenePartMode _scenePartMode = ScenePartMode.All;
 
-        private static readonly Vector3 StartPosition = new Vector3(0.0f,1.0f,2.5f);
+        //    private static readonly Vector3 StartPosition = new Vector3(-2.2f, 1.8f, -0.1f);    //good start at home
+        //     private static readonly Vector3 StartPosition = new Vector3(1.5f, 1.9f, -0.2f); //good start at the studio
+        private static readonly Vector3 StartPosition = new Vector3(0f, 0.7f, 1.8f);    //good start at home
         private bool _dirty = true;
         private bool _updateOrientation = true;
         private const float MovementBaseSpeed = 1.0f;
@@ -39,36 +46,56 @@ namespace open3mod
 
         private float _pitchAngle = 0.0f;
         private float _rollAngle = 0.0f;
-        private float _yawAngle = 0.0f;
+//        private float _yawAngle = -1.57f;
+        private float _yawAngle = 0f;
 
 
-        public FpsCameraController()
+        public FpsCameraController(float fovy, ScenePartMode scenePartMode)
         {
             _view = Matrix4.Identity;
             _translation = StartPosition;
-
+            _fovy = fovy;
+            _scenePartMode = scenePartMode;
             UpdateViewMatrix();
         }
 
         public void SetPivot(Vector3 pivot)
         { }
 
+        public void SetViewNoOffset(Matrix4 view)
+        {
+            _view = view;
+        }
+
         public Matrix4 GetView()
         {
-            if(_dirty)
+            if (_dirty)
             {
                 UpdateViewMatrix();
             }
+            return OpenVRInterface.viewOffset * _view;
+        }
+
+        public Matrix4 GetViewNoOffset()
+        {
             return _view;
         }
 
+        public float GetFOV()
+        {
+            return _fovy;
+        }
+
+        public void SetParam(float fovy, ScenePartMode scenePartMode, CameraMode mode)
+        {
+            _scenePartMode = scenePartMode;
+            Debug.Assert(mode == CameraMode.Fps);
+            _fovy = fovy;
+        }
 
         public void Pan(float x, float y)
         {
-            
-
         }
-
 
         public void MovementKey(float x, float y, float z)
         {
@@ -87,6 +114,15 @@ namespace open3mod
             return CameraMode.Fps;
         }
 
+        public ScenePartMode GetScenePartMode()
+        {
+            return _scenePartMode;
+        }
+
+        public void SetScenePartMode(ScenePartMode value)
+        {
+            _scenePartMode = value;
+        }
 
         public void MouseMove(int x, int y)
         {
@@ -123,8 +159,8 @@ namespace open3mod
             _view = GetOrientation();
             _view *= Matrix4.CreateFromAxisAngle(_view.Row0.Xyz, _pitchAngle);
             _view.Transpose();
-
             _view = Matrix4.CreateTranslation(-_translation) * _view;
+
             _dirty = false;
         }
 

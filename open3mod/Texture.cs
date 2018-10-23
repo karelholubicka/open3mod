@@ -29,13 +29,13 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 
 
 using OpenTK;
 using OpenTK.Graphics;
 using OpenTK.Graphics.OpenGL;
 using PixelFormat = OpenTK.Graphics.OpenGL.PixelFormat;
-
 
 namespace open3mod
 {
@@ -53,14 +53,15 @@ namespace open3mod
         private string _originalFile;
         private readonly TextureQueue.CompletionCallback _callback;
         private Image _image;
-        private int _gl;      
+        private bool _dynamic;
+        private int _gl;
 
         private string _actualLocation;
 
         private readonly object _lock = new object();
         private readonly string _baseDir;
         private readonly Assimp.EmbeddedTexture _dataSource;
- 
+
 
         /// <summary>
         /// Possible states of a Texture object during its lifetime
@@ -70,7 +71,7 @@ namespace open3mod
             LoadingPending,
             LoadingFailed,
             WinFormsImageCreated,
-            GlTextureCreated,
+            GlTextureCreated
         }
 
         /// <summary>
@@ -142,7 +143,16 @@ namespace open3mod
             }
         }
 
-
+        private void SetDynamic(bool value)
+        {
+           if ( _dynamic == value) return;
+            _dynamic = value;
+            if (!_dynamic)
+            {
+                ReleaseUpload();
+                Upload();
+            }
+        }
 
         /// <summary>
         /// Get the Image associated with the texture or null if the
@@ -162,7 +172,7 @@ namespace open3mod
         /// or an empty string if the texture is from memory or any other
         /// source that does not map to a file.
         /// 
-        /// Only available iff loading completed successfully.
+        /// Only available if loading completed successfully.
         /// </summary>
         public string ActualLocation
         {
@@ -204,6 +214,22 @@ namespace open3mod
             private set { _state = value; }
         }
 
+        /// <summary>
+        /// Is Dynamic?
+        /// </summary>
+        public bool Dynamic
+        {
+            get { return _dynamic;}
+            set {SetDynamic(value); }
+        }
+
+        /// <summary>
+        /// GL ID needed for dynamic update
+        /// </summary>
+        public int Gl
+        {
+            get { return _gl; }
+        }
 
         /// <summary>
         /// File name, may contain a path suffix or even a full path.
@@ -257,8 +283,8 @@ namespace open3mod
         /// </summary>
         public void Upload()
         {
+            if (State == TextureState.GlTextureCreated) return;
             Debug.Assert(State == TextureState.WinFormsImageCreated);
-
             // this may be required if ReleaseUpload() has been called before
             if (_gl != 0)
             {
@@ -266,7 +292,7 @@ namespace open3mod
                 _gl = 0;
             }
 
-            lock (_lock) { // this is a long CS, but at this time we don't expect concurrent action.
+            lock (_lock) { // this is a long CS, but at this time we don't expect concurrent action, i.e. updating texture by loader.
                 // http://www.opentk.com/node/259
                 Bitmap textureBitmap = null;
                 var shouldDisposeBitmap = false;
@@ -283,11 +309,9 @@ namespace open3mod
                         textureBitmap = new Bitmap(_image);
                         shouldDisposeBitmap = true;
                     }
-
-                    GL.GetError();
-
+                    RenderControl.GLError("StartUploadTex");
                     // apply texture resolution bias? (i.e. low quality textures)
-                    if(GraphicsSettings.Default.TexQualityBias > 0)
+                    if (GraphicsSettings.Default.TexQualityBias > 0)
                     {
                         var b = ApplyResolutionBias(textureBitmap, GraphicsSettings.Default.TexQualityBias);
                         if(shouldDisposeBitmap)
@@ -297,37 +321,35 @@ namespace open3mod
                         textureBitmap = b;
                         shouldDisposeBitmap = true;
                     }
-
                     var textureData = textureBitmap.LockBits(
                         new Rectangle(0, 0, textureBitmap.Width, textureBitmap.Height),
                             ImageLockMode.ReadOnly,
                             System.Drawing.Imaging.PixelFormat.Format32bppArgb
                         );
 
-
                     // determine alpha pixels if this has not been done before
                     if (_alphaState == AlphaState.NotKnownYet)
                     {
                         _alphaState = LookForAlphaBits(textureData) ? AlphaState.HasAlpha : AlphaState.Opaque;
                     }
-
                     int tex;
                     GL.GenTextures(1, out tex);
-
                     GL.Arb.ActiveTexture(TextureUnit.Texture0);
                     GL.BindTexture(TextureTarget.Texture2D, tex);
 
-                    ConfigureFilters();                    
-
                     // upload
-                    GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Four,
-                                  textureBitmap.Width,
-                                  textureBitmap.Height,
-                                  0,
-                                  PixelFormat.Bgra,
-                                  PixelType.UnsignedByte,
-                                  textureData.Scan0);
+                    {
+                        RenderControl.GLError("BeforeUploadTex");
+                        GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba8,
+                                      textureBitmap.Width,
+                                      textureBitmap.Height,
+                                      0,
+                                      PixelFormat.Bgra,
+                                      PixelType.UnsignedByte,
+                                      textureData.Scan0);
+                        RenderControl.GLError("EndUploadTex");
 
+                    }
                     textureBitmap.UnlockBits(textureData);
 
                     // set final state only if the Gl texture object has been filled successfully
@@ -336,7 +358,8 @@ namespace open3mod
                         _gl = tex;
                         State = TextureState.GlTextureCreated;
                     }
-                }       
+                    ConfigureFilters(); //Contains Generate mipmaps, texture must be uploaded and GlTextureCreated;
+                }
                 finally {
                     if (shouldDisposeBitmap)
                     {
@@ -344,6 +367,15 @@ namespace open3mod
                     }
                 }
             }
+            /* check upload is OK
+                        {
+                            GL.BindTexture(TextureTarget.Texture2D, _gl);
+                            Bitmap xtestBmp = new Bitmap(1080, 1080);
+                            var testData = xtestBmp.LockBits(new Rectangle(0, 0, xtestBmp.Width, xtestBmp.Height), ImageLockMode.ReadOnly, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                            GL.GetTexImage(TextureTarget.Texture2D, 0, OpenTK.Graphics.OpenGL.PixelFormat.Bgra, PixelType.UnsignedByte, testData.Scan0);
+                            xtestBmp.UnlockBits(testData);
+                            xtestBmp.Dispose();      
+                        }  */
         }
 
 
@@ -387,7 +419,7 @@ namespace open3mod
                 case 1:
                     GL.TexParameter(TextureTarget.Texture2D,
                         TextureParameterName.TextureMinFilter,
-                        (int)(mips ? TextureMinFilter.LinearMipmapLinear : TextureMinFilter.Linear));
+                       (int)(mips ? TextureMinFilter.LinearMipmapLinear : TextureMinFilter.Linear)); //this creates error in ModernGL
 
                     GL.TexParameter(TextureTarget.Texture2D,
                         TextureParameterName.TextureMagFilter,
@@ -397,8 +429,8 @@ namespace open3mod
                     // point
                 case 0:
                     GL.TexParameter(TextureTarget.Texture2D,
-                        TextureParameterName.TextureMinFilter,
-                        (int)(mips ? TextureMinFilter.NearestMipmapNearest : TextureMinFilter.Nearest));
+                        TextureParameterName.TextureMinFilter, 
+                      (int)(mips ? TextureMinFilter.NearestMipmapNearest : TextureMinFilter.Nearest)); //this creates error in ModernGL
 
                     GL.TexParameter(TextureTarget.Texture2D,
                         TextureParameterName.TextureMagFilter,
@@ -425,16 +457,15 @@ namespace open3mod
                 GL.TexParameter(TextureTarget.Texture2D, (TextureParameterName)ExtTextureFilterAnisotropic.TextureMaxAnisotropyExt,
                     0.0f);    
             }
-            
+
             // generate MIPs?
-            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.GenerateMipmap, mips ? 1 : 0);
+            //  GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.GenerateMipmap, mips ? 1.0f : 0.0f); //this creates error in ModernGL, we have to call GenerateMipMap manually
             if (!mips)
             {
                 return;
             }
-
-            // already uploaded before? need glGenerateMipMap to update
-            if(State == TextureState.GlTextureCreated)
+                        // already uploaded before? need glGenerateMipMap to update
+            if (State == TextureState.GlTextureCreated)
             {
                 GL.GenerateMipmap(GenerateMipmapTarget.Texture2D);
             }
@@ -561,7 +592,7 @@ namespace open3mod
 
 
         /// <summary>
-        /// Returns whether there are any non-oapque pixels in a given texture slice.
+        /// Returns whether there are any non-opaque pixels in a given texture slice.
         /// </summary>
         /// <param name="textureData"></param>
         /// <returns></returns>
@@ -625,7 +656,7 @@ namespace open3mod
         }
 
 
-        private void SetImage(Image image, TextureLoader.LoadResult result)
+        public void SetImage(Image image, TextureLoader.LoadResult result)
         {
             Debug.Assert(State == TextureState.LoadingPending);
 
@@ -639,6 +670,23 @@ namespace open3mod
                 
 #if DETECT_ALPHA_EARLY
                 if (_image != null)
+                {
+                    TryDetectAlpha();
+                }
+#endif
+            }
+        }
+
+        public void SetDynImage(Image image)
+        {
+            if (State == TextureState.GlTextureCreated) ReleaseUpload();     //  so State = TextureState.WinFormsImageCreated; 
+            lock (_lock)
+            {
+                _image = new Bitmap(image);
+                // set proper state
+
+#if DETECT_ALPHA_EARLY
+                if ((_image != null) &&(_alphaState == AlphaState.NotKnownYet)) // but what we read nonalpha over alpha texture??
                 {
                     TryDetectAlpha();
                 }

@@ -60,6 +60,7 @@ namespace open3mod
 
             gl.Width = s.Width;
             gl.Height = s.Height;
+
         }
 
         private void OnSplitterMove(object sender, SplitterEventArgs e)

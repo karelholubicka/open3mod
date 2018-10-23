@@ -170,7 +170,6 @@ namespace open3mod
             get { return _visibleInstancedMeshes; }
         }
 
-
         private void CountMeshes()
         {
             var counters = new List<int>(_scene.Raw.MeshCount);
@@ -339,11 +338,14 @@ namespace open3mod
             }
 
             _nodePurposes.Add(node, purpose);
-            // TODO(acgessler): Proper icons for lights and cameras.
             var index = (int) purpose;
-            if (purpose == NodePurpose.Light || purpose == NodePurpose.Camera)
+            if (purpose == NodePurpose.Light)
             {
-                index = 1;
+                index = 6;
+            }
+            if (purpose == NodePurpose.Camera)
+            {
+                index = 5;
             }
             newUiNode.ImageIndex = newUiNode.SelectedImageIndex = index;
 
@@ -406,17 +408,27 @@ namespace open3mod
 
         private void UpdateSceneVisibilityFilter(TreeNode hoverNode = null)
         {
+            bool isLight = false;
             var node = hoverNode ?? _tree.SelectedNode;
             var item = node == null ? _scene.Raw.RootNode : node.Tag;
-
+            var itemAsNode = item as Node;
+            _scene.ActiveLight = null;
+            if ((node != null)&& (itemAsNode != null))
+                {
+                if (GetNodePurpose(itemAsNode) == NodePurpose.Light)
+                {
+                    isLight = true;
+                    _scene.ActiveLight = itemAsNode;
+                }
+            }
             _filterByMesh.Clear();
 
             var overrideSkeleton = false;
 
-            if (item == _scene.Raw.RootNode && !HasHiddenNodes)
-            {
-                _scene.SetVisibleNodes(null);
-
+            if ((item == _scene.Raw.RootNode && !HasHiddenNodes) || isLight)
+                // If the selected item is a light, we render everything only in particular light
+                {
+                    _scene.SetVisibleNodes(null);
                 // Update statistics
                 _visibleNodes = _nodeCount;
                 _visibleMeshes = _meshCountFullScene;
@@ -425,11 +437,9 @@ namespace open3mod
                 HidePopups();
                 return;
             }
-
             // If the selected item is a mesh, we render only the corresponding
             // parent node plus this mesh. Otherwise we include all child nodes.
-            var itemAsNode = item as Node;
-            if (itemAsNode != null && !IsNodeHidden(itemAsNode))
+           if (itemAsNode != null && !IsNodeHidden(itemAsNode))
             {
                 var counters = new List<int>(_scene.Raw.MeshCount);
                 for (int i = 0; i < _scene.Raw.MeshCount; ++i)
@@ -437,8 +447,10 @@ namespace open3mod
                     counters.Add(0);
                 }
 
-                AddNodeToSet(_filterByMesh, itemAsNode);
-                CountMeshes(itemAsNode, counters);
+                {
+                    AddNodeToSet(_filterByMesh, itemAsNode);
+                    CountMeshes(itemAsNode, counters);
+                }
 
                 // Keep display statistics for meshes up to date.
                 _visibleInstancedMeshes = counters.Sum();

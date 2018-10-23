@@ -15,7 +15,7 @@
       <Value Profile="(Default)">2</Value>
     </Setting>
     <Setting Name="RenderingBackend" Type="System.Int32" Scope="User">
-      <Value Profile="(Default)">0</Value>
+      <Value Profile="(Default)">1</Value>
     </Setting>
     <Setting Name="LightingQuality" Type="System.Int32" Scope="User">
       <Value Profile="(Default)">1</Value>
@@ -24,6 +24,30 @@
       <Value Profile="(Default)">False</Value>
     </Setting>
     <Setting Name="OutputBrightness" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">50</Value>
+    </Setting>
+    <Setting Name="KeyingColorH" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">111</Value>
+    </Setting>
+    <Setting Name="KeyingColorS" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">47</Value>
+    </Setting>
+    <Setting Name="KeyingColorV" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">58</Value>
+    </Setting>
+    <Setting Name="KeyingSoftness" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">50</Value>
+    </Setting>
+    <Setting Name="CancelColorRange" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">False</Value>
+    </Setting>
+    <Setting Name="CancelColorPower" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">50</Value>
+    </Setting>
+    <Setting Name="KeyingVSensitivity" Type="System.Int32" Scope="User">
+      <Value Profile="(Default)">50</Value>
+    </Setting>
+    <Setting Name="KeyingTreshold" Type="System.Int32" Scope="User">
       <Value Profile="(Default)">50</Value>
     </Setting>
   </Settings>

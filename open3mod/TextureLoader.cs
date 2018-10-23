@@ -112,7 +112,8 @@ namespace open3mod
                             bitmap.UnlockBits(data);
                             _image = bitmap;
                             _result = LoadResult.Good;
-                        }                
+                            _image.RotateFlip(RotateFlipType.RotateNoneFlipY);
+                        }
                     }
                     catch (Exception)
                     {

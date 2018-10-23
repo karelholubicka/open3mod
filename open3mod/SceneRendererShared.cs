@@ -76,6 +76,7 @@ namespace open3mod
             {
                 return;
             }
+       //     Owner.Renderer.MainWindow.renderControl.SetRenderTarget(RenderControl.RenderTarget.ScreenCompat); this is stupid
             var i = 0;
             foreach (var mat in Owner.Raw.Materials)
             {
@@ -86,7 +87,62 @@ namespace open3mod
                 ++i;
             }
         }
+        /// <summary>
 
+        /// </summary>
+        protected void UploadDynamicTextures()
+        {
+            if (Owner.Raw.Materials == null)
+            {
+                return;
+            }
+            var i = 0;
+            foreach (var mat in Owner.Raw.Materials)
+            {
+                if (Owner.MaterialMapper.UploadDynamicTextures(mat))
+                {
+                    IsAlphaMaterial[i] = Owner.MaterialMapper.IsAlphaMaterial(mat);
+                }
+                ++i;
+            }
+        }
+
+        /* display lists:
+        0: Background;
+        1: Else (always visible);
+        2: Foreground;
+        3: GreenScreenAnimated;
+        4: BackgroundAnimated;
+        5: Else (always visible)Animated;
+        6: ForegroundAnimated;
+        7: GreenScreenAnimated;
+        Animated - list is refreshed each frame
+        */
+        /// <summary>
+        /// <sorts geometry into Displists based on its name>
+        /// </summary>   
+        protected int GetDispList(string name)
+        {
+            switch (name.Substring(0, 1))
+            {
+                case "B":
+                    return 0;
+                case "F":
+                    return 2;
+                case "G":
+                    return 3;
+                case "b":
+                    return 4;
+                case "a":
+                    return 5; //animated others
+                case "f":
+                    return 6;
+                case "g":
+                    return 7;
+                default:
+                    return 1;
+            }
+        }
 
         /// <summary>
         /// Recursive rendering function
@@ -98,7 +154,7 @@ namespace open3mod
         /// <returns>whether there is any need to do a second render pass with alpha blending enabled</returns>
         protected bool RecursiveRender(Node node,
             Dictionary<Node, List<Mesh>> visibleMeshesByNode,
-            RenderFlags flags, bool animated)
+            RenderFlags flags, bool animated, int currDispList)
         {
             var needAlpha = false;
 
@@ -112,17 +168,21 @@ namespace open3mod
                 m = AssimpToOpenTk.FromMatrix(node.Transform);
             }
             // TODO for some reason, all OpenTk matrices need a ^T - we should clarify our conventions somewhere
+            RenderControl.GLError("A11");
             m.Transpose();
             PushWorld(ref m);
-            if (node.HasMeshes)
+            RenderControl.GLError("B11");
+
+             if ((node.HasMeshes) && (currDispList == GetDispList(node.Name)))
             {
                 needAlpha = DrawOpaqueMeshes(node, visibleMeshesByNode, flags, animated);
             }
 
             for (var i = 0; i < node.ChildCount; i++)
             {
-                needAlpha = RecursiveRender(node.Children[i], visibleMeshesByNode, flags, animated) || needAlpha;
+                needAlpha = RecursiveRender(node.Children[i], visibleMeshesByNode, flags, animated, currDispList) || needAlpha;
             }
+            RenderControl.GLError("C11");
             PopWorld();
             return needAlpha;
         }
@@ -143,7 +203,7 @@ namespace open3mod
         /// <param name="animated">Play animation?</param>
         protected void RecursiveRenderWithAlpha(Node node, Dictionary<Node, List<Mesh>> visibleNodes,
             RenderFlags flags,
-            bool animated)
+            bool animated, int currDispList)
         {
             Matrix4 m;
             if (animated)
@@ -161,15 +221,15 @@ namespace open3mod
             // the following permutations could be compacted into one big loop with lots of
             // condition magic, but at the cost of readability and also performance.
             // we therefore keep it redundant and stupid.
-            if (node.HasMeshes)
-            {
+            if ((node.HasMeshes) && (currDispList == GetDispList(node.Name)))
+                {
                 DrawAlphaMeshes(node, visibleNodes, flags, animated);
             }
 
 
             for (var i = 0; i < node.ChildCount; i++)
             {
-                RecursiveRenderWithAlpha(node.Children[i], visibleNodes, flags, animated);
+                RecursiveRenderWithAlpha(node.Children[i], visibleNodes, flags, animated, currDispList);
             }
 
             PopWorld();

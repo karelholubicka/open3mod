@@ -39,9 +39,11 @@ namespace open3mod
 
         public SettingsDialog()
         {
+            _gSettings = GraphicsSettings.Default;
+            _gSettings.Reload();
+
             InitializeComponent();
 
-            _gSettings = GraphicsSettings.Default;
 
             InitTexResolution();
             InitTexFilter();
@@ -196,6 +198,12 @@ namespace open3mod
             comboBoxSetBackend.SelectedIndex = _gSettings.RenderingBackend;
         }
 
+        public void ChangeRenderingBackend()
+        {
+            Debug.Assert(comboBoxSetBackend.SelectedIndex <= 1);
+            comboBoxSetBackend.SelectedIndex = 1- comboBoxSetBackend.SelectedIndex;
+        }
+
 
         private void OnChangeRenderingBackend(object sender, EventArgs e)
         {
@@ -210,6 +218,7 @@ namespace open3mod
             {
                 scene.RecreateRenderingBackend();
             }
+            _main.Renderer.RecreateRenderingBackend();
         }
 
 
@@ -234,6 +243,31 @@ namespace open3mod
         private void OnLMWebsite(object sender, LinkLabelLinkClickedEventArgs e)
         {
             System.Diagnostics.Process.Start("http://www.leapmotion.com"); 
+        }
+
+        private void trackBarKeyingColorH_ValueChanged(object sender, EventArgs e)
+        {
+            labelH.Text = trackBarKeyingColorH.Value.ToString();
+        }
+
+        private void trackBarKeyingColorS_ValueChanged(object sender, EventArgs e)
+        {
+            labelS.Text = trackBarKeyingColorS.Value.ToString();
+        }
+
+        private void trackBarKeyingColorV_ValueChanged(object sender, EventArgs e)
+        {
+            labelV.Text = trackBarKeyingColorV.Value.ToString();
+        }
+
+        private void UseTrackingCheckbox_CheckedChanged(object sender, EventArgs e)
+        {
+            labelPleaseRestart.Visible = true;
+        }
+
+        private void autoStartCheckBox_CheckedChanged(object sender, EventArgs e)
+        {
+            labelPleaseRestart.Visible = true;
         }
     }
 }

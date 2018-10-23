@@ -20,6 +20,7 @@
 
 using System.Diagnostics;
 using System.Threading;
+using System;
 
 namespace open3mod
 {
@@ -36,9 +37,8 @@ namespace open3mod
 
         // limit maximum framerate to avoid taking too much CPU, overheating
         // laptop mainboards or accidentially causing nuclear detonations.
-        public const int FRAMERATE_LIMIT = 100;
-
-
+        public const int FRAMERATE_LIMIT = 80;
+        
         public double LastFrameDelta
         {
             get { return _lastFrameDelta; }
@@ -70,7 +70,6 @@ namespace open3mod
                 _lastFrameDelta = _sw.Elapsed.TotalMilliseconds / 1000.0;
                 _sw.Reset();
             }
-
             _sw.Start();
 
             // prevent divide by zero

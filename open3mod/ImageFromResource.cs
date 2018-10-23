@@ -53,10 +53,17 @@ namespace open3mod
 
             StreamRefs.Add(stream);
 
-            Debug.Assert(stream != null);
-            img = Image.FromStream(stream);
-
-            Cache[resPath] = img;
+          //  Debug.Assert(stream != null);
+            if (stream != null)
+            {
+                img = Image.FromStream(stream);
+                Cache[resPath] = img;
+            }
+            if (img == null)
+            {
+                string fixPath = resPath.Replace("open3mod.Images.", MainWindow.exePath+"\\Images\\");
+                img = Image.FromFile(fixPath);
+            } 
             return img;
         }
     }

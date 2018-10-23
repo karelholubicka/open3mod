@@ -36,6 +36,8 @@ namespace open3mod
     {
         private Vector4 _bounds;
         private CameraMode _camMode;
+        private float _fovy = MathHelper.PiOver4;
+        private ScenePartMode _scenePartMode = ScenePartMode.All;
 
         /// <summary>
         /// Camera controllers maintain state even when they are not active, 
@@ -45,10 +47,12 @@ namespace open3mod
         private readonly ICameraController[] _cameraImpls = new ICameraController[(int)CameraMode._Max];
 
 
-        public Viewport(Vector4 bounds, CameraMode camMode)
+        public Viewport(Vector4 bounds, CameraMode camMode, float fovy, ScenePartMode scenePartMode)
         {
             _bounds = bounds;
             _camMode = camMode;
+            _fovy = fovy;
+            _scenePartMode = scenePartMode;
         }
 
 
@@ -57,8 +61,8 @@ namespace open3mod
             get { return _bounds; }
             set
             {
-                Debug.Assert(value.X < value.Z);
-                Debug.Assert(value.Y < value.W);
+                Debug.Assert(value.X <= value.Z); //= must be for invisible viewports
+                Debug.Assert(value.Y <= value.W);
                 _bounds = value;
                 // TODO verify we don't overlap any other viewports
             }
@@ -90,20 +94,25 @@ namespace open3mod
                 switch (camMode)
                 {
                     case CameraMode.Fps:
-                        _cameraImpls[(int)camMode] = new FpsCameraController();
+                        _cameraImpls[(int)camMode] = new FpsCameraController(_fovy, _scenePartMode);
                         break;
                     case CameraMode.X:
                     case CameraMode.Y:
                     case CameraMode.Z:
                     case CameraMode.Orbit:
-                        var orbit = new OrbitCameraController(camMode);
+                        var orbit = new OrbitCameraController(camMode,_fovy, _scenePartMode);
                         _cameraImpls[(int)CameraMode.X] = orbit;
                         _cameraImpls[(int)CameraMode.Y] = orbit;
                         _cameraImpls[(int)CameraMode.Z] = orbit;
                         _cameraImpls[(int)CameraMode.Orbit] = orbit;
                         break;
-                    case CameraMode.Pick:
-                        _cameraImpls[(int)camMode] = new PickingCameraController();
+                    case CameraMode.HMD:
+                    case CameraMode.Cont1:
+                    case CameraMode.Cont2:
+                        var vrcont = new PickingCameraController(camMode, _fovy, _scenePartMode);
+                        _cameraImpls[(int)CameraMode.HMD] = vrcont;
+                        _cameraImpls[(int)CameraMode.Cont1] = vrcont;
+                        _cameraImpls[(int)CameraMode.Cont2] = vrcont;
                         break;
                     default:
                         Debug.Assert(false);
@@ -113,10 +122,11 @@ namespace open3mod
             return _cameraImpls[(int)camMode];
         }
 
-
         public void ResetCameraController() 
         {
             _cameraImpls[(int)_camMode] = null;
+            _fovy = MathHelper.PiOver4 * 78 / 90;
+            _scenePartMode = ScenePartMode.All;
             ActiveCameraControllerForView();
         }
 
@@ -130,7 +140,7 @@ namespace open3mod
 
             var oldCam = _cameraImpls[(int) _camMode];
 
-            // when changing to the picking camera mode, preserve the old view matrix
+/*            // when changing to the picking camera mode, preserve the old view matrix
             if (cameraMode == CameraMode.Pick)
             {
                 Debug.Assert(oldCam != null);
@@ -140,7 +150,7 @@ namespace open3mod
                 }
                 var picker = (PickingCameraController)_cameraImpls[(int)cameraMode];
                 picker.SetView(oldCam.GetView());
-            }
+            }*/
 
             _camMode = cameraMode;
 
@@ -151,12 +161,21 @@ namespace open3mod
                 {
                     return;
                 }
-
                 var orbit = _cameraImpls[(int)CameraMode.Orbit] as OrbitCameraController;
                 Debug.Assert(orbit != null);
-
                 orbit.SetOrbitOrConstrainedMode(cameraMode);
-            } 
+            }
+            // special handling to switch VR controller between HMD,Cont1, Con2 modes
+            if (cameraMode == CameraMode.HMD || cameraMode == CameraMode.Cont1 || cameraMode == CameraMode.Cont2)
+            {
+                if (_cameraImpls[(int)CameraMode.HMD] == null)
+                {
+                    return;
+                }
+                var vrcont = _cameraImpls[(int)CameraMode.HMD] as PickingCameraController;
+                Debug.Assert(vrcont != null);
+                vrcont.SetVRCameraMode(cameraMode);
+            }
         }
     }
 }

@@ -19,6 +19,7 @@
 ///////////////////////////////////////////////////////////////////////////////////
 
 using System;
+using System.Collections.Specialized;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -43,7 +44,7 @@ namespace open3mod
         /// <summary>
         /// Enum of all supported tab states.
         /// </summary>
-        public enum TabState { 
+        public enum TabState {
 
             Empty = 0,
             Loading,
@@ -53,9 +54,10 @@ namespace open3mod
 
 
         /// <summary>
-        /// Index all 3D views - there can be up to four 3D views at this time,
+        /// Index all 3D views - there can be up to four/five 3D views at this time,
         /// but the rest of the codebase always works with _Max so it can be
         /// nicely adjusted simply by adding more indexes.
+        /// 5th window is solo window invisible to NDI output.
         /// </summary>
         public enum ViewIndex
         {
@@ -63,6 +65,7 @@ namespace open3mod
             Index1,
             Index2,
             Index3,
+            Index4,
             _Max
         }
 
@@ -86,7 +89,7 @@ namespace open3mod
         {
             // values pertain to CoreSettings:DefaultViewMode!
             Single = 0,
-            Two = 1,
+            TwoVertical = 1,
             Four = 2,
             TwoHorizontal = 3,
         }
@@ -125,7 +128,7 @@ namespace open3mod
                 }
                 return _activeViews;
             }
-            set{
+            set {
                 _activeViews = value;
             }
         }
@@ -133,67 +136,209 @@ namespace open3mod
         private Viewport[] _activeViews = new Viewport[(int)ViewIndex._Max];
 
         /// <summary>
-        /// Current view mode
+        /// Creates string to be saved to settings with viewports and controllers setttings
+        /// </summary>
+        public string getViewsStatusString()
+        {
+            var index = Tab.ViewIndex.Index0;
+            string viewportStr = ((int)_activeViewMode).ToString()+MainWindow.recentDataSeparator[0];
+            string controllerStr = "";
+            foreach (var viewport in ActiveViews)
+            {
+                var cam = ActiveCameraControllerForView(index);
+                int intCamMode;
+                if (cam != null)
+                {
+                    intCamMode = (int)ActiveCameraControllerForView(index).GetCameraMode();
+                    controllerStr = intCamMode.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                              MainWindow.recentItemSeparator[0] + cam.GetFOV().ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                              MainWindow.recentItemSeparator[0] + ((int)cam.GetScenePartMode()).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    viewportStr = viewportStr + controllerStr + MainWindow.recentDataSeparator[0];
+                }
+                ++index;
+            }
+            return viewportStr;
+        }
+
+        /// <summary>
+        /// Loads settings with viewports and controllers setttings
+        /// </summary>
+        public void loadViewsStatusString()
+
+        {
+            float[] _fovyA = { MathHelper.PiOver4, MathHelper.PiOver4, MathHelper.PiOver4, MathHelper.PiOver4, MathHelper.PiOver4 };
+            ScenePartMode[] _scenePartMode = { ScenePartMode.Background, ScenePartMode.Background, ScenePartMode.Foreground, ScenePartMode.Foreground, ScenePartMode.All };
+            CameraMode[] cameraModes = { CameraMode.Cont1, CameraMode.Cont1, CameraMode.Cont2, CameraMode.Cont2, CameraMode.Orbit };
+            string[] recentData;
+            string[] recentItems;
+            // CoreSettings.CoreSettings.Default.ViewsStatus - modify from collection to 21 string
+            var v = CoreSettings.CoreSettings.Default.ViewsStatus;
+            recentData = v.Split(MainWindow.recentDataSeparator, StringSplitOptions.None);
+            for (int i = 0; i < (int)ViewIndex._Max; i++)
+            {
+                try
+                {
+                    if (!String.IsNullOrEmpty(recentData[0])) ActiveViewMode = (ViewMode)int.Parse(recentData[0], System.Globalization.CultureInfo.InvariantCulture);
+                    //this sets up all Viewports and controllers
+                    var cam = ActiveCameraControllerForView((ViewIndex)i);
+                    if (cam!=null)
+                    {
+                        recentItems = recentData[i+1].Split(MainWindow.recentItemSeparator, StringSplitOptions.None);
+                        if (!String.IsNullOrEmpty(recentItems[0])) cameraModes[i] = (CameraMode)int.Parse(recentItems[0], System.Globalization.CultureInfo.InvariantCulture);
+
+                        if (!String.IsNullOrEmpty(recentItems[1])) _fovyA[i] = float.Parse(recentItems[1], System.Globalization.CultureInfo.InvariantCulture);
+                        if (_fovyA[i] > MathHelper.PiOver2) _fovyA[i] = MathHelper.PiOver2;
+
+                        if (!String.IsNullOrEmpty(recentItems[2])) _scenePartMode[i] = (ScenePartMode)int.Parse(recentItems[2], System.Globalization.CultureInfo.InvariantCulture);
+                        ChangeCameraModeForView((ViewIndex)i, cameraModes[i]);
+                        cam = ActiveCameraControllerForView((ViewIndex)i);
+                        cam.GetCameraMode();
+                        cam.SetParam(_fovyA[i], _scenePartMode[i], cameraModes[i]);
+                    }
+                }
+                catch
+                {
+
+                }
+
+            }
+        }
+
+        /// <summary>
+        /// Current view mode + reading saved viewports and controllers setttings
         /// </summary>
         public ViewMode ActiveViewMode
         {
             get { return _activeViewMode; }
             set
-            { 
-                // hardcoded table of viewport sizes. This is the only location
-                // so changing these constants is sufficient to adjust viewport defaults
+            {
                 _activeViewMode = value;
-                CoreSettings.CoreSettings.Default.DefaultViewMode = (int) value;
-                switch(_activeViewMode)
+                CoreSettings.CoreSettings.Default.DefaultViewMode = (int)value;
+                if ((ActiveViews[(int)ActiveViewIndex] == null)) //viewports not yet initialized
                 {
-                    case ViewMode.Single:
-                        ActiveViews = new []
+                    float[] _fovyA = { MathHelper.PiOver4, MathHelper.PiOver4, MathHelper.PiOver4, MathHelper.PiOver4, MathHelper.PiOver4 };
+                    ScenePartMode[] _scenePartMode = {ScenePartMode.All, ScenePartMode.All, ScenePartMode.All, ScenePartMode.All, ScenePartMode.All };
+                    string[] recentData;
+                    string[] recentItems;
+                    CameraMode[] cameraModes = { CameraMode.Orbit, CameraMode.Cont1, CameraMode.Cont2, CameraMode.Orbit, CameraMode.Orbit };
+                    var v = CoreSettings.CoreSettings.Default.ViewsStatus;
+                    recentData = v.Split(MainWindow.recentDataSeparator, StringSplitOptions.None);
+                    for (int i = 0; i < (int)ViewIndex._Max; i++)
+                    {
+                        try
                         {
-                            new Viewport(new Vector4(0.0f, 0.0f, 1.0f, 1.0f), CameraMode.Orbit), 
-                            null,
-                            null,
-                            null
-                        };
-                        break;
-                    case ViewMode.Two:
-                        ActiveViews = new []
+                            recentItems = recentData[i + 1].Split(MainWindow.recentItemSeparator, StringSplitOptions.None);
+                            if (!String.IsNullOrEmpty(recentItems[0])) cameraModes[i] = (CameraMode)int.Parse(recentItems[0], System.Globalization.CultureInfo.InvariantCulture);
+                            if (!String.IsNullOrEmpty(recentItems[1])) _fovyA[i] = float.Parse(recentItems[1], System.Globalization.CultureInfo.InvariantCulture);
+                            if (_fovyA[i] > MathHelper.PiOver2) _fovyA[i] = MathHelper.PiOver2;
+                            if (!String.IsNullOrEmpty(recentItems[2])) _scenePartMode[i] = (ScenePartMode)int.Parse(recentItems[2], System.Globalization.CultureInfo.InvariantCulture);
+                        }
+                        catch
                         {
-                            new Viewport(new Vector4(0.0f, 0.0f, 1.0f, 0.5f), CameraMode.Orbit), 
-                            null,
-                            new Viewport(new Vector4(0.0f, 0.5f, 1.0f, 1.0f), CameraMode.X), 
-                            null
-                        };            
-                        break;
-                    case ViewMode.TwoHorizontal:
-                        ActiveViews = new[]
-                        {
-                            new Viewport(new Vector4(0.0f, 0.0f, 0.5f, 1.0f), CameraMode.Orbit), 
-                            new Viewport(new Vector4(0.5f, 0.0f, 1.0f, 1.0f), CameraMode.X),
-                            null, 
-                            null
-                        };
-                        break;
-                    case ViewMode.Four:
-                        ActiveViews = new []
-                        {
-                            new Viewport(new Vector4(0.0f, 0.0f, 0.5f, 0.5f), CameraMode.Orbit), 
-                            new Viewport(new Vector4(0.5f, 0.0f, 1.0f, 0.5f), CameraMode.Z),
-                            new Viewport(new Vector4(0.0f, 0.5f, 0.5f, 1.0f), CameraMode.X),
-                            new Viewport(new Vector4(0.5f, 0.5f, 1.0f, 1.0f), CameraMode.Y)
-                        };
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException();
-                }
 
-                Debug.Assert(ActiveViews[0] != null);
-                if (ActiveViews[(int)ActiveViewIndex] == null)
+                        }
+                    }
+                    // hardcoded table of viewport sizes. This is the only location
+                    // so changing these constants is sufficient to adjust viewport defaults
+                    //we always start 4+1 viewports and keep them, change of activeViewMode only resizes them
+                    switch (_activeViewMode)
+                    {
+                        case ViewMode.Single:
+                            ActiveViews = new[]
+                            {
+                            new Viewport(new Vector4(0.0f, 0.0f, 0.0f, 0.0f), cameraModes[0],_fovyA[0],_scenePartMode[0]),
+                            new Viewport(new Vector4(0.0f, 0.0f, 0.0f, 0.0f), cameraModes[1],_fovyA[1],_scenePartMode[1]),
+                            new Viewport(new Vector4(0.0f, 0.0f, 0.0f, 0.0f), cameraModes[2],_fovyA[2],_scenePartMode[2]),
+                            new Viewport(new Vector4(0.0f, 0.0f, 0.0f, 0.0f), cameraModes[3],_fovyA[3],_scenePartMode[3]),
+                            new Viewport(new Vector4(0.0f, 0.0f, 1.0f, 1.0f), cameraModes[4],_fovyA[4],_scenePartMode[4])
+                        };
+                            break;
+                        case ViewMode.TwoVertical://
+                            ActiveViews = new[]
+                            {
+                            new Viewport(new Vector4(0.0f, 0.5f, 1.0f, 1.0f), cameraModes[0],_fovyA[0],_scenePartMode[0]),
+                            new Viewport(new Vector4(0.0f, 0.0f, 1.0f, 0.5f), cameraModes[1],_fovyA[1],_scenePartMode[1]),
+                            new Viewport(new Vector4(0.0f, 0.0f, 0.0f, 0.0f), cameraModes[2],_fovyA[2],_scenePartMode[2]),
+                            new Viewport(new Vector4(0.0f, 0.0f, 0.0f, 0.0f), cameraModes[3],_fovyA[3],_scenePartMode[3]),
+                            new Viewport(new Vector4(0.0f, 0.0f, 0.0f, 0.0f), cameraModes[4],_fovyA[4],_scenePartMode[4])
+                        };
+                            break;
+                        case ViewMode.TwoHorizontal:
+                            ActiveViews = new[]
+                            {
+                            new Viewport(new Vector4(0.0f, 0.0f, 0.0f, 0.0f), cameraModes[0],_fovyA[0],_scenePartMode[0]),
+                            new Viewport(new Vector4(0.0f, 0.0f, 0.0f, 0.0f), cameraModes[1],_fovyA[1],_scenePartMode[1]),
+                            new Viewport(new Vector4(0.0f, 0.5f, 1.0f, 1.0f), cameraModes[2],_fovyA[2],_scenePartMode[2]),
+                            new Viewport(new Vector4(0.0f, 0.0f, 1.0f, 0.5f), cameraModes[3],_fovyA[3],_scenePartMode[3]),
+                            new Viewport(new Vector4(0.0f, 0.0f, 0.0f, 0.0f), cameraModes[4],_fovyA[4],_scenePartMode[4])
+                        };
+                            break;
+                        case ViewMode.Four:
+                            ActiveViews = new[]
+                            {
+                            new Viewport(new Vector4(0.0f, 0.5f, 0.5f, 1.0f), cameraModes[0],_fovyA[0],_scenePartMode[0]),
+                            new Viewport(new Vector4(0.0f, 0.0f, 0.5f, 0.5f), cameraModes[1],_fovyA[1],_scenePartMode[1]),
+                            new Viewport(new Vector4(0.5f, 0.5f, 1.0f, 1.0f), cameraModes[2],_fovyA[2],_scenePartMode[2]),
+                            new Viewport(new Vector4(0.5f, 0.0f, 1.0f, 0.5f), cameraModes[3],_fovyA[3],_scenePartMode[3]),
+                            new Viewport(new Vector4(0.0f, 0.0f, 0.0f, 0.0f), cameraModes[4],_fovyA[4],_scenePartMode[4])
+                        };
+                            break;
+                        default:
+                            throw new ArgumentOutOfRangeException();
+                    }
+                    Debug.Assert(ActiveViews[0] != null);
+                    if (ActiveViews[(int)ActiveViewIndex] == null)
+                    {
+                        ActiveViewIndex = ViewIndex.Index0;
+                    }
+                }
+                else //if we are already initialized, we only change bounds and re-select active viewport
                 {
-                    ActiveViewIndex = ViewIndex.Index0;
+                    switch (_activeViewMode)
+                    {
+                        case ViewMode.Single:
+                            ActiveViews[0].Bounds = new Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+                            ActiveViews[1].Bounds = new Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+                            ActiveViews[2].Bounds = new Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+                            ActiveViews[3].Bounds = new Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+                            ActiveViews[4].Bounds = new Vector4(0.0f, 0.0f, 1.0f, 1.0f);
+                            ActiveViewIndex = ViewIndex.Index4;
+                            break;
+                        case ViewMode.TwoVertical:
+                            ActiveViews[0].Bounds = new Vector4(0.0f, 0.5f, 1.0f, 1.0f);
+                            ActiveViews[1].Bounds = new Vector4(0.0f, 0.0f, 1.0f, 0.5f);
+                            ActiveViews[2].Bounds = new Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+                            ActiveViews[3].Bounds = new Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+                            ActiveViews[4].Bounds = new Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+                            ActiveViewIndex = ViewIndex.Index0;
+                            break;
+                        case ViewMode.TwoHorizontal:
+                            ActiveViews[0].Bounds = new Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+                            ActiveViews[1].Bounds = new Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+                            ActiveViews[2].Bounds = new Vector4(0.0f, 0.5f, 1.0f, 1.0f);
+                            ActiveViews[3].Bounds = new Vector4(0.0f, 0.0f, 1.0f, 0.5f);
+                            ActiveViews[4].Bounds = new Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+                            ActiveViewIndex = ViewIndex.Index2;
+                            break;
+                        case ViewMode.Four:
+                            ActiveViews[0].Bounds = new Vector4(0.0f, 0.5f, 0.5f, 1.0f);
+                            ActiveViews[1].Bounds = new Vector4(0.0f, 0.0f, 0.5f, 0.5f);
+                            ActiveViews[2].Bounds = new Vector4(0.5f, 0.5f, 1.0f, 1.0f);
+                            ActiveViews[3].Bounds = new Vector4(0.5f, 0.0f, 1.0f, 0.5f);
+                            ActiveViews[4].Bounds = new Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+                            ActiveViewIndex = ViewIndex.Index0;
+                            break;
+                        default:
+                            throw new ArgumentOutOfRangeException();
+                    }
+
                 }
             }
-        }       
+        }
 
+        public void ActiveViewModeChange()
+        {
+        }
 
         /// <summary>
         /// Obtain an instance of the current active camera controller (i.e.
@@ -287,6 +432,7 @@ namespace open3mod
         /// </summary>
         public Tab(object id, string fileBeingLoaded)
         {
+            File = fileBeingLoaded;
             var vm = CoreSettings.CoreSettings.Default.DefaultViewMode;
             if(vm <= 2 && vm >= 0)
             {
@@ -299,7 +445,6 @@ namespace open3mod
             }
             
             State = fileBeingLoaded == null ? TabState.Empty : TabState.Loading;
-            File = fileBeingLoaded;
             Id = id;
         }
 
@@ -439,15 +584,15 @@ namespace open3mod
 
             const float threshold = 0.01f;
 
-            if (Math.Abs(x - vp.Bounds.Z) < threshold && _activeViewMode != ViewMode.Two)
+            if (Math.Abs(x - vp.Bounds.Z) < threshold && _activeViewMode != ViewMode.TwoVertical)
             {
-                if (Math.Abs(y - vp.Bounds.W) < threshold)
+                if (Math.Abs(y - vp.Bounds.Y) < threshold)
                 {
                     return ViewSeparator.Both;
                 }
                 return ViewSeparator.Vertical;
             }
-            if (Math.Abs(y - vp.Bounds.W) < threshold && _activeViewMode != ViewMode.TwoHorizontal)
+            if (Math.Abs(y - vp.Bounds.Y) < threshold && _activeViewMode != ViewMode.TwoHorizontal)
             {
                 return ViewSeparator.Horizontal;
             }
@@ -466,7 +611,7 @@ namespace open3mod
         ///   [MinimumViewportSplit,1-MinimumViewportSplit] are clamped.</param>
         public void SetViewportSplitH(float f)
         {
-            if (ActiveViewMode != ViewMode.TwoHorizontal && ActiveViewMode != ViewMode.Four)
+            if (ActiveViewMode != ViewMode.Four)
             {
                 return;
             }
@@ -488,13 +633,13 @@ namespace open3mod
         /// <summary>
         /// Sets a new position for the vertical split between viewports.
         /// 
-        /// This is only possible (and otherwise ignored) if at least two viewports are enabled.
+        /// This is only possible (and otherwise ignored)  if all the four viewports are enabled.
         /// </summary>
         /// <param name="f">New splitter bar position, in [0,1]. Positions outside
         ///   [MinimumViewportSplit,1-MinimumViewportSplit] are clamped.</param>
         public void SetViewportSplitV(float f)
         {
-            if (ActiveViewMode != ViewMode.Two && ActiveViewMode != ViewMode.Four)
+            if (ActiveViewMode != ViewMode.Four)
             {
                 return;
             }

@@ -25,7 +25,7 @@ namespace open3mod
     /// <summary>
     /// Predefined camera modes. The map from ICameraController implementations
     /// to camera modes is not one-by-one because the X,Y and Z modes are 
-    /// states of the more general Orbit mode. 
+    /// states of the more general Orbit mode and +HMD,Cont1,Cont2 are special tracking modes. 
     /// </summary>
     public enum CameraMode
     {
@@ -35,10 +35,31 @@ namespace open3mod
         Z = 2,
         Orbit = 3,
         Fps = 4,
-        Pick = 5,
-
-        _Max = 6,
+        HMD = 5,
+        Cont1 = 6,
+        Cont2 = 7,
+        _Max = 8,
         
+    }
+
+    /// <summary>
+    /// Predefined camera modes. The map from ICameraController implementations
+    /// to camera modes is not one-by-one because the X,Y and Z modes are 
+    /// states of the more general Orbit mode and HMD,Cont1,Cont2 are special tracking modes. 
+    /// </summary>
+    public enum ScenePartMode
+    {
+        //these modes require special handling in renderer
+        Background = 0,
+        GreenScreen = 1, //No camera overlay
+        Foreground = 2,
+        Others = 3,
+        All = 4, //No camera overlay
+        //these modes require special handling in renderer
+        Camera = 5,
+        CameraCancelColor = 6,
+        Keying = 7,
+        Composite = 8// Regular output = Bkgd + Canvas textured with Camera + Foreground. Until solved in one pass, see it as Bg+Canvas+Fg
     }
 
     /// <summary>
@@ -58,11 +79,35 @@ namespace open3mod
         void SetPivot(Vector3 pivot);
 
         /// <summary>
+        /// If possible, loads the current view transformation matrix for the camera, at least to first update
+        /// </summary>
+        /// <returns>View matrix (rotation+translation, no scaling)</returns>
+        void SetViewNoOffset(Matrix4 view);
+
+        /// <summary>
         /// Obtains the current view transformation matrix for the camera
         /// </summary>
         /// <returns>View matrix (rotation+translation, no scaling)</returns>
         Matrix4 GetView();
 
+        /// <summary>
+        /// Obtains the current view transformation matrix for the camera without any update
+        /// </summary>
+        /// <returns>View matrix (rotation+translation, no scaling)</returns>
+        Matrix4 GetViewNoOffset();
+
+        /// <summary>
+        /// Obtains current field of view
+        /// </summary>
+        /// <returns>field of view for Y in radians</returns>
+        float GetFOV();
+
+        /// <summary>
+        /// Sets controller view parameters
+        /// </summary>
+
+        void SetParam(float fovy, ScenePartMode scenePartMode, CameraMode mode);
+     
         /// <summary>
         /// Processes mouse movement events
         /// </summary>
@@ -100,6 +145,18 @@ namespace open3mod
         /// </summary>
         /// <returns></returns>
         CameraMode GetCameraMode();
+
+        /// <summary>
+        /// Gets the mode of displaying
+        /// </summary>
+        /// <returns></returns>
+        ScenePartMode GetScenePartMode();
+
+        /// <summary>
+        /// Sets the mode of displaying
+        /// </summary>
+        /// <returns></returns>
+        void SetScenePartMode(ScenePartMode value);
 
         /// <summary>
         /// Process the 3D Input of the LeapMotion device

@@ -49,15 +49,29 @@ namespace open3mod
         private readonly Assimp.Scene _raw;
         private readonly Vector3 _sceneCenter;
         private readonly Vector3 _sceneMin;
-        private readonly Vector3 _sceneMax;       
+        private readonly Vector3 _sceneMax;
+        private bool _newFrame = true;
         private readonly LogStore _logStore;
-
         private readonly TextureSet _textureSet;
+        public Node ActiveLight;
+        public Texture dynamicTexture;
+        public TextureThumbnailControl dynamicTextureMenu;
 
         private MaterialMapper _mapper;
-        private ISceneRenderer _renderer;
+        private ISceneRenderer _sceneRenderer;
+        private Renderer _renderer;
         private readonly UndoStack _undoStack = new UndoStack();
-        private readonly Dictionary<Mesh, Mesh> _overrideMeshes = new Dictionary<Mesh, Mesh>(); 
+        private readonly Dictionary<Mesh, Mesh> _overrideMeshes = new Dictionary<Mesh, Mesh>();
+/*        private Matrix4 _offsetMatrix = Matrix4.Identity;
+
+        /// <summary>
+        /// Matrix to fit real world
+        /// </summary>
+        public Matrix4 OffsetMatrix
+        {
+            get { return _offsetMatrix; }
+            set { _offsetMatrix = OffsetMatrix; }
+        }*/
 
         /// <summary>
         /// Source file name with full path
@@ -76,6 +90,24 @@ namespace open3mod
             get { return _baseDir; }
         }
 
+        /// <summary>
+        /// Flag that scene is rendered first time in new frame
+        /// </summary>
+        public bool NewFrame
+        {
+            get { return _newFrame; }
+            set { _newFrame = value; }
+        }
+
+        /// <summary>
+        /// Points to Renderer
+        /// </summary>
+
+        public Renderer Renderer
+        {
+            get { return _renderer; }
+        }
+
 
         /// <summary>
         /// Obtain the "raw" scene data as imported by Assimp
@@ -85,6 +117,19 @@ namespace open3mod
             get { return _raw; }
         }
 
+        /// <summary>
+        /// Sets active light, if null, all lights are used:
+        /// </summary>
+     /*   public Node ActiveLight
+        {
+            get { return _activeLight; }
+            set {
+                _activeLight = ActiveLight;
+                if (_activeLight != null)
+                    _activeLight = null;
+            }
+        }
+*/
 
         public Vector3 SceneCenter
         {
@@ -185,7 +230,13 @@ namespace open3mod
             get { return _undoStack; }
         }
 
+        public float Scale
+        {
+            get { return _scale; }
+            set { _scale = value; }
+        }
 
+        private volatile float _scale = 1;
         private volatile bool _texturesChanged;
         private volatile bool _wantSetTexturesChanged;
         private readonly object _texChangeLock = new object();
@@ -209,8 +260,9 @@ namespace open3mod
         /// Construct a scene given a file name, throw if loading fails
         /// </summary>
         /// <param name="file">File name to be loaded</param>
-        public Scene(string file)
+        public Scene(string file, Renderer renderer)
         {
+            _renderer = renderer;
             _file = file;
             _baseDir = Path.GetDirectoryName(file);
   
@@ -348,10 +400,10 @@ namespace open3mod
         /// </summary>
         public void RecreateRenderingBackend()
         {
-            if(_renderer != null)
+            if(_sceneRenderer != null)
             {
-                _renderer.Dispose();
-                _renderer = null;
+                _sceneRenderer.Dispose();
+                _sceneRenderer = null;
             }
 
             if (_mapper != null)
@@ -365,17 +417,24 @@ namespace open3mod
 
         private void CreateRenderingBackend()
         {
-            Debug.Assert(_renderer == null);
-            if (GraphicsSettings.Default.RenderingBackend == 0)
-            {
-                _mapper = new MaterialMapperClassicGl(this); 
-                _renderer = new SceneRendererClassicGl(this, _sceneMin, _sceneMax);
-            }
-            else
+            Debug.Assert(_sceneRenderer == null);
+           //GraphicsSettings.Default.RenderingBackend = 0; 
+           if (GraphicsSettings.Default.RenderingBackend == 0)
+                {
+                _mapper = new MaterialMapperClassicGl(this);
+                _sceneRenderer = new SceneRendererClassicGl(this, _sceneMin, _sceneMax);
+                }
+                else
             {
                 _mapper = new MaterialMapperModernGl(this);
-                _renderer = new SceneRendererModernGl(this, _sceneMin, _sceneMax);
+                _sceneRenderer = new SceneRendererModernGl(this, _sceneMin, _sceneMax);
             }
+        }
+
+        public void SwitchRenderingBackend()
+        {
+            GraphicsSettings.Default.RenderingBackend = 1 - GraphicsSettings.Default.RenderingBackend;
+            RecreateRenderingBackend();
         }
 
 
@@ -412,46 +471,55 @@ namespace open3mod
             _animator.Update(delta + _accumulatedTimeDelta);
             _accumulatedTimeDelta = 0.0;
 
-            _renderer.Update(delta);
+            _sceneRenderer.Update(delta);
         }
 
 
         /// <summary>
         /// Call once per frame to render the scene to the current viewport.
         /// </summary>
-        public void Render(UiState state, ICameraController cam, Renderer target)
+        public void Render(UiState state, ICameraController cam, Renderer target, int toVideo, bool VRModel = false)
         {
             RenderFlags flags = 0;
-          
-            if (state.ShowNormals)
+
+            if (state.ShowNormals && toVideo == 0)
             {
                 flags |= RenderFlags.ShowNormals;
             }
-            if (state.ShowBBs)
+            if (state.ShowBBs && toVideo == 0)
             {
                 flags |= RenderFlags.ShowBoundingBoxes;
             }
-            if (state.ShowSkeleton || _overrideSkeleton)
+            if ((state.ShowSkeleton || _overrideSkeleton)&& toVideo == 0)
             {
                 flags |= RenderFlags.ShowSkeleton;
             }
-            if (state.RenderLit)
+            if (state.RenderLit) 
             {
                 flags |= RenderFlags.Shaded;
             }
-            if (state.RenderTextured)
+            if (state.RenderTextured || VRModel)
             {
                 flags |= RenderFlags.Textured;
             }
-            if (state.RenderWireframe)
+            if (state.RenderWireframe && toVideo == 0)
             {
                 flags |= RenderFlags.Wireframe;
             }
-            
+            if (state.UseSceneLights && !VRModel)
+            {
+                flags |= RenderFlags.UseSceneLights;
+            }
+            if (!state.UseSceneLights && !VRModel && toVideo == 0)
+            {
+                flags |= RenderFlags.ShowLightDirection;
+            }
+
             flags |= RenderFlags.ShowGhosts;
+            flags |= RenderFlags.ForceTwoSidedLighting;
 
             _wantSetTexturesChanged = false;
-            _renderer.Render(cam, _meshesToShow, _nodesToShowChanged, _texturesChanged, flags, target);
+            _sceneRenderer.Render(cam, _meshesToShow, _nodesToShowChanged, _texturesChanged, flags, target);
 
             lock (_texChangeLock)
             {
@@ -534,6 +602,7 @@ namespace open3mod
                 if (tex.State == Texture.TextureState.GlTextureCreated)
                 {
                     tex.ReleaseUpload();
+                   // tex.Upload();//??????????
                 }
             }
         }
@@ -547,7 +616,7 @@ namespace open3mod
         /// </summary>
         public void RequestReconfigureTextures()
         {
-            SetTexturesChangedFlag();
+          //  SetTexturesChangedFlag();
             foreach (var tex in TextureSet.GetLoadedTexturesCollectionThreadsafe())
             {
                 if (tex.State == Texture.TextureState.GlTextureCreated)
@@ -653,7 +722,7 @@ namespace open3mod
                     for (var i = 0; i < mesh.VertexCount; i++)
                     {
                         var tmp = AssimpToOpenTk.FromVector(mesh.Vertices[i]);
-                        Vector3.Transform(ref tmp, ref trafo, out tmp);
+                        Vector3.TransformPerspective(ref tmp, ref trafo, out tmp);//Perspective added
 
                         min.X = Math.Min(min.X, tmp.X);
                         min.Y = Math.Min(min.Y, tmp.Y);
@@ -717,7 +786,7 @@ namespace open3mod
             {
                 var trafo = AssimpToOpenTk.FromMatrix(node.Transform);
                 trafo.Transpose();
-                Vector3.Transform(ref v, ref trafo, out v);
+                Vector3.TransformPerspective(ref v, ref trafo, out v); //Perspective added
             } while ((node = node.Parent) != null);
             _pivot = v;
         }
@@ -760,9 +829,9 @@ namespace open3mod
                 _textureSet.Dispose();
             }
 
-            if (_renderer != null)
+            if (_sceneRenderer != null)
             {
-                _renderer.Dispose();
+                _sceneRenderer.Dispose();
             }
 
             if (_mapper != null)

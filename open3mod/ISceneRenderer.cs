@@ -34,6 +34,9 @@ namespace open3mod
         ShowSkeleton = 0x10,
         Textured = 0x20,
         ShowGhosts = 0x40, // show ghost (i.e. semi-transparent) shapes for filtered meshes
+        UseSceneLights = 0x80,
+        ForceTwoSidedLighting = 0x100,
+        ShowLightDirection = 0x200,
     }
 
 

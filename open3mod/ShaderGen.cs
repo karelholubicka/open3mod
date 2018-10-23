@@ -31,22 +31,24 @@ namespace open3mod
         [Flags]
         public enum GenFlags
         {
-            ColorMap = 0x1,
+            TwoSide = 0x1,
             VertexColor = 0x2,
             PhongSpecularShading = 0x4,
             Skinning = 0x8,
             Lighting = 0x10
+                //..so lightCount is added as lightCount*0x20+flag
         };
 
         private readonly Dictionary<GenFlags, Shader> shaders_ = new Dictionary<GenFlags, Shader>();
 
-        public Shader GenerateOrGetFromCache(GenFlags flags)
+        public Shader GenerateOrGetFromCache(GenFlags flags, int lightCount)
         {
-            if (!shaders_.ContainsKey(flags))
+            int byteShift = 0x20;
+            if (!shaders_.ContainsKey(flags + lightCount * byteShift))
             {
-                shaders_[flags] = Generate(flags);
+                shaders_[flags+lightCount* byteShift] = Generate(flags, lightCount);
             }
-            return shaders_[flags];
+            return shaders_[flags + lightCount * byteShift];
         }
 
         public void Dispose()
@@ -58,13 +60,18 @@ namespace open3mod
             GC.SuppressFinalize(this);
         }
 
-        public Shader Generate( GenFlags flags ) 
+        public Shader Generate( GenFlags flags, int lightCount) 
         {
             string pp = "";
 
-            if (flags.HasFlag(GenFlags.ColorMap))
+            if (lightCount > 0)
             {
-                pp += "#define HAS_COLOR_MAP\n";
+                pp += "#define NR_LIGHTS " + lightCount.ToString()+"\n";
+            }
+
+            if (flags.HasFlag(GenFlags.TwoSide))
+            {
+                pp += "#define HAS_TWOSIDE\n";
             }
 
             if (flags.HasFlag(GenFlags.VertexColor))
@@ -87,7 +94,7 @@ namespace open3mod
                 pp += "#define HAS_LIGHTING\n";
             }
 
-            return Shader.FromResource("open3mod.Shader.UberVertexShader.glsl", "open3mod.Shader.UberFragmentShader.glsl", pp);
+           return Shader.FromResource("open3mod.Shaders.UberVertexShader.glsl", "open3mod.Shaders.UberFragmentShader.glsl", pp);
         }
 
     }

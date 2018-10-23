@@ -68,8 +68,8 @@ namespace open3mod
 
             _textTexture = GL.GenTexture();
             GL.BindTexture(TextureTarget.Texture2D, _textTexture);
-            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)All.Linear);
-            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)All.Linear);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMinFilter.LinearMipmapLinear);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMagFilter.Linear);
 
             // just allocate memory, so we can update efficiently using TexSubImage2D
             GL.TexImage2D(TextureTarget.Texture2D, 0, PixelInternalFormat.Rgba, _textBmp.Width, _textBmp.Height, 0,
@@ -153,7 +153,7 @@ namespace open3mod
         {
             // bad, OpenTK is not safe to use from within finalizers.
             // Dispose() should be called manually.
-            Debug.Assert(false);
+         //   Debug.Assert(false);
         }
 #endif
 
@@ -196,8 +196,11 @@ namespace open3mod
 
         public void Draw()
         {
+            var cs = _renderer.RenderResolution;
+            if ((cs.Width == 0) || (cs.Height == 0)) return;
+
             // Updates the GL texture if there were any changes to the .net offscreen buffer. 
-            if(_tempContext != null)
+            if (_tempContext != null)
             {
                 Commit();
 
@@ -215,21 +218,20 @@ namespace open3mod
             GL.PushMatrix();
             GL.LoadIdentity();
 
-            var cs = _renderer.RenderResolution;
             GL.Ortho(0, cs.Width, cs.Height, 0, -1, 1);
-          
+
             GL.Enable(EnableCap.Texture2D);
             GL.Enable(EnableCap.Blend);
-            GL.BlendFunc(BlendingFactorSrc.SrcAlpha, BlendingFactorDest.OneMinusSrcAlpha);
+            GL.BlendFuncSeparate(BlendingFactorSrc.SrcAlpha, BlendingFactorDest.OneMinusSrcAlpha, BlendingFactorSrc.SrcAlpha, BlendingFactorDest.One);
 
             GL.BindTexture(TextureTarget.Texture2D, _textTexture);
-
+         
             const float offset = 0;
 
-            // clear color
+            // clear color (otherwise multiplies texture)
             GL.Color3(1.0f,1.0f,1.0f);
 
-            GL.Begin(BeginMode.Quads);
+            GL.Begin(PrimitiveType.Quads);
             GL.TexCoord2(0f, 0f); GL.Vertex2(0f - offset, 0f - offset);
             GL.TexCoord2(1f, 0f); GL.Vertex2(cs.Width - offset, 0f - offset);
             GL.TexCoord2(1f, 1f); GL.Vertex2(cs.Width - offset, cs.Height - offset);
@@ -265,8 +267,7 @@ namespace open3mod
 
                 GL.BindTexture(TextureTarget.Texture2D, _textTexture);
                 GL.TexSubImage2D(TextureTarget.Texture2D, 0, 0, 0, _textBmp.Width, _textBmp.Height,
-                    PixelFormat.Bgra, PixelType.UnsignedByte, data.Scan0);
-
+                   PixelFormat.Bgra, PixelType.UnsignedByte, data.Scan0);
                 _textBmp.UnlockBits(data);
             }
             catch(ArgumentException)

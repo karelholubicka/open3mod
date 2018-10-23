@@ -64,6 +64,18 @@ namespace open3mod
             set { CoreSettings.CoreSettings.Default.ShowFps = value; }
         }
 
+        public bool ShowVRModels
+        {
+            get { return CoreSettings.CoreSettings.Default.ShowVRModels; }
+            set { CoreSettings.CoreSettings.Default.ShowVRModels = value; }
+        }
+
+        public bool UseSceneLights
+        {
+            get { return CoreSettings.CoreSettings.Default.UseSceneLights; }
+            set { CoreSettings.CoreSettings.Default.UseSceneLights = value; }
+        }
+        
         public bool ShowBBs
         {
             get { return CoreSettings.CoreSettings.Default.ShowBBs; }

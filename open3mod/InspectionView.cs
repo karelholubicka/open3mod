@@ -48,6 +48,19 @@ namespace open3mod
             tabPageMaterials.Focus();
         }
 
+        public void SelectPlaybackView()
+        {
+            tabControlInfoViewPicker.TabPages.IndexOf(tabPageAnimations);
+            if (tabControlInfoViewPicker.TabPages.IndexOf(tabPageAnimations) >= 0)
+            {
+                tabControlInfoViewPicker.SelectedTab = tabPageAnimations;
+            }
+            else
+            {
+                tabControlInfoViewPicker.SelectedTab = tabPageTree;
+            }
+        }
+
 
         /// <summary>
         /// Binds a scene to the InspectionView.
@@ -83,8 +96,8 @@ namespace open3mod
             Animations = new AnimationInspectionView(Scene, tabPageAnimations);
             if (Animations.Empty)
             {
-                // Same for animations.
-                tabControlInfoViewPicker.TabPages.Remove(tabPageAnimations);
+                // Same for animations...no, we need it always.
+              //  tabControlInfoViewPicker.TabPages.Remove(tabPageAnimations);
             }
 
             //

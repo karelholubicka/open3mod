@@ -50,7 +50,6 @@ namespace open3mod
         private Image _imageWithAlpha;
         private Image _imageWithoutAlpha;
 
-
         public string FilePath
         {
             get { return _filePath; }
@@ -84,29 +83,28 @@ namespace open3mod
             s.CheckOnClick = true;
             s.Checked = true;
 
-            s = new ToolStripMenuItem("Mirror along X (U) axis", null, OnContextMenuMirrorX);
+            s = new ToolStripMenuItem("Mirror along X (U) axis", null, OnContextMenuMirrorX);//#2
             ContextMenuStrip.Items.Add(s);
             s.CheckOnClick = true;
             s.Checked = false;
             s.Enabled = true;
 
-            s = new ToolStripMenuItem("Mirror along Y (V) axis", null, OnContextMenuMirrorY);
+            s = new ToolStripMenuItem("Mirror along Y (V) axis", null, OnContextMenuMirrorY);//#3
             ContextMenuStrip.Items.Add(s);
             s.CheckOnClick = true;
             s.Checked = false;
             s.Enabled = true;
-          
+
             ContextMenuStrip.Items.Add(new ToolStripSeparator());
 
-            s = new ToolStripMenuItem("Delete", null, OnContextMenuDelete);
+            s = new ToolStripMenuItem("Delete", null, OnContextMenuDelete);//#5
             ContextMenuStrip.Items.Add(s);
             s.Enabled = true;
 
-            s = new ToolStripMenuItem("Rename", null, OnContextMenuRename);
+            s = new ToolStripMenuItem("Rename", null, OnContextMenuRename);//#6
             ContextMenuStrip.Items.Add(s);
             s.Enabled = true;
     
-
             ContextMenuStrip.Items.Add(new ToolStripSeparator());
 
             s = new ToolStripMenuItem("Texture Viewer", null, OnContextMenuDetails);
@@ -119,15 +117,21 @@ namespace open3mod
             );
             s.Enabled = false;
 
-            s = new ToolStripMenuItem("Save", null, OnContextMenuExport);
+            s = new ToolStripMenuItem("Save", null, OnContextMenuExport);//#9
             ContextMenuStrip.Items.Add(s);
             s.Enabled = false;
-          
+
+            ContextMenuStrip.Items.Add(new ToolStripSeparator());//#10
+
+            s = new ToolStripMenuItem("Toggle dynamic", null, OnContextMenuToggleDynamic);//#11
+            ContextMenuStrip.Items.Add(s);
+            s.CheckOnClick = false;
+            s.Checked = false;
+            s.Enabled = true;
+
             ContextMenuStrip.Opened += OnContextMenuOpen;
             DoubleClick += OnContextMenuDetails;
         }
-
-
 
         private void OnContextMenuZoom(object sender, EventArgs eventArgs)
         {
@@ -309,9 +313,10 @@ namespace open3mod
                     SetZoom();
 
                     // Enable the remainder menu items
-                    for (var i = 2; i < ContextMenuStrip.Items.Count; ++i)
-                    {
-                        ContextMenuStrip.Items[i].Enabled = true;
+//                  for (var i = 2; i < ContextMenuStrip.Items.Count; ++i)
+                    for (var i = 2; i < 10; ++i)
+                        {
+                            ContextMenuStrip.Items[i].Enabled = true;
                     }
                 }
                 else
@@ -339,7 +344,7 @@ namespace open3mod
                 return;
             }
 
-            var item = ((ToolStripMenuItem)ContextMenuStrip.Items[0]);
+            var item = ((ToolStripMenuItem)ContextMenuStrip.Items[1]);
             if (!Image.IsAlphaPixelFormat(_imageWithAlpha.PixelFormat))
             {
                 item.Enabled = false;
@@ -376,7 +381,7 @@ namespace open3mod
                 return;
             }
 
-            var item = ((ToolStripMenuItem)ContextMenuStrip.Items[1]);
+            var item = ((ToolStripMenuItem)ContextMenuStrip.Items[0]);
             if(_imageWithAlpha.Width >= pictureBox.Width && _imageWithAlpha.Height >= pictureBox.Height)
             {
                 item.Enabled = false;
@@ -395,6 +400,61 @@ namespace open3mod
             }
         }
 
+        /// <summary>
+        /// Dynamic means it will be overwritten in GL memory, its Image is kept "old"
+        /// </summary>
+
+        private void OnContextMenuToggleDynamic(object sender, EventArgs eventArgs)
+        {
+            if (_scene.dynamicTexture == _texture)
+            {
+                if (_texture != null)
+                {
+                    _texture.ReleaseUpload();//this reloads texture, Dynamic field is not used here
+                    _texture.Upload();
+                }
+                ContextMenuStrip.Items[2].Enabled = true;
+                ContextMenuStrip.Items[3].Enabled = true;
+                ContextMenuStrip.Items[5].Enabled = true;
+                ContextMenuStrip.Items[6].Enabled = true;
+                ContextMenuStrip.Items[9].Enabled = true;
+                var s1 = (ToolStripMenuItem)ContextMenuStrip.Items[11];
+                s1.Checked = false;
+                _scene.dynamicTexture = null;
+                _scene.dynamicTextureMenu = null;
+            }
+            else
+            {
+                if (_scene.dynamicTexture != null)
+                {
+                    _scene.dynamicTexture.ReleaseUpload();
+                    _scene.dynamicTexture.Upload();
+                }
+                _scene.dynamicTexture = null;
+                if (_scene.dynamicTextureMenu != null)
+                    {
+                    _scene.dynamicTextureMenu.ContextMenuStrip.Items[2].Enabled = true;
+                    _scene.dynamicTextureMenu.ContextMenuStrip.Items[3].Enabled = true;
+                    _scene.dynamicTextureMenu.ContextMenuStrip.Items[5].Enabled = true;
+                    _scene.dynamicTextureMenu.ContextMenuStrip.Items[6].Enabled = true;
+                    _scene.dynamicTextureMenu.ContextMenuStrip.Items[9].Enabled = true;
+                    var s2 = (ToolStripMenuItem)_scene.dynamicTextureMenu.ContextMenuStrip.Items[11];
+                    s2.Checked = false;
+
+                }
+                //  _texture.Dynamic = true;
+                _scene.dynamicTexture = _texture;
+                _scene.dynamicTextureMenu = this;
+                ContextMenuStrip.Items[2].Enabled = false;
+                ContextMenuStrip.Items[3].Enabled = false;
+                ContextMenuStrip.Items[5].Enabled = false;
+                ContextMenuStrip.Items[6].Enabled = false;
+                ContextMenuStrip.Items[9].Enabled = false;
+                var s = (ToolStripMenuItem)ContextMenuStrip.Items[11];
+                s.Checked = true;
+
+            }
+        }
 
         /// <summary>
         /// Changes the source texture path for this texture. This

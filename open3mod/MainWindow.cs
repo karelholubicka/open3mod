@@ -17,37 +17,59 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS 
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ///////////////////////////////////////////////////////////////////////////////////
-
 #define USE_APP_IDLE
+
 
 using System;
 using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Imaging;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 using System.Threading;
+using System.Reflection;
+using System.Runtime.InteropServices;
+using OpenTK;
+using OpenTK.Graphics;
+using OpenTK.Graphics.OpenGL;
 
 using OpenTK;
-
+using Valve.VR;
 #if LEAP
 using Leap;
 #endif
+
 
 namespace open3mod
 {
     public partial class MainWindow : Form
     {
+        bool firstRun = true;
+        public const bool useIO = false;
+
+        public static string exePath = "e:\\vr-software\\open3mod-master\\open3mod\\";
+        public static string[] recentDataSeparator = new string[] { "::" };
+        public static string[] recentItemSeparator = new string[] { ";;" };
+        public static NewTek.NDI.Finder NDIFinder;
+        NewTek.NDI.Source[] _NDISources;
+        NewTek.NDI.Source _selectedNDISource = null;
+        public static int mainTiming = 40;
+        public static int timeOffset = 0;
+        public CapturePreview capturePreview1;
+        public CapturePreview capturePreview2;
+        public OutputGenerator outputGenerator;
+
         private readonly UiState _ui;
         private Renderer _renderer;
         private readonly FpsTracker _fps;
         private LogViewer _logViewer;
+        private OpenVRInterface _openVRInterface;
 
         private delegate void DelegateSelectTab(TabPage tab);
         private readonly DelegateSelectTab _delegateSelectTab;
-
         private delegate void DelegatePopulateInspector(Tab tab);
         private readonly DelegatePopulateInspector _delegatePopulateInspector;
 
@@ -68,11 +90,11 @@ namespace open3mod
 
         public delegate void TabSelectionChangeHandler(Tab tab);
         public event TabSelectionChangeHandler SelectedTabChanged;
+      
 
-
-        public GLControl GlControl
+        public RenderControl renderControl
         {
-            get { return glControl1; }
+            get { return renderControl1; }
         }
 
         public UiState UiState
@@ -90,28 +112,48 @@ namespace open3mod
             get { return _renderer; }
         }
 
+        public NewTek.NDI.Source[] NDISources
+        {
+            get { return _NDISources; }
+        }
 
+        public NewTek.NDI.Source NDISource
+        {
+            get { return _selectedNDISource; }
+        }
         public const int MaxRecentItems = 12;
 
 
+
         public MainWindow()
-        {        
+        {
+
+            exePath = System.IO.Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().CodeBase);
+            exePath = exePath.Substring(6);
+            string remove = "\\bin\\Debug";
+            if (exePath.Substring(exePath.Length - remove.Length) == remove)
+                {
+                exePath = exePath.Remove(exePath.Length - remove.Length);
+            }
             // create delegate used for asynchronous calls 
             _delegateSelectTab = SelectTab;
             _delegatePopulateInspector = PopulateInspector;
-         
-            InitializeComponent();
-            _captionStub = Text;
 
-            AddEmptyTab();           
-   
-            // initialize UI state shelf with a default tab
-            _ui = new UiState(new Tab(_emptyTab, null));
+             InitializeComponent();
+            _captionStub = Text;
+            _openVRInterface = new OpenVRInterface();
+            OpenVRInterface.fPredictedSecondsToPhotonsFromNow = CoreSettings.CoreSettings.Default.SecondsToPhotons;
             _fps = new FpsTracker();
 
+            // initialize UI state shelf with a default tab
+            AddEmptyTab();
+            _ui = new UiState(new Tab(_emptyTab, null));
+
             // sync global UI with UIState
+            showVRModelsToolStripMenuItem.Checked = toolStripButtonShowVRModels.Checked = _ui.ShowVRModels;
             framerateToolStripMenuItem.Checked = toolStripButtonShowFPS.Checked = _ui.ShowFps;
             lightingToolStripMenuItem.Checked = toolStripButtonShowShaded.Checked = _ui.RenderLit;
+            useSceneLightsToolStripMenuItem.Checked = toolStripButtonUseSceneLights.Checked = _ui.UseSceneLights;
             cullingToolStripMenuItem.Checked = toolStripButtonCulling.Checked = GraphicsSettings.Default.BackFaceCulling;
             texturedToolStripMenuItem.Checked = toolStripButtonShowTextures.Checked = _ui.RenderTextured;
             wireframeToolStripMenuItem.Checked = toolStripButtonWireframe.Checked = _ui.RenderWireframe;
@@ -119,30 +161,63 @@ namespace open3mod
             showBoundingBoxesToolStripMenuItem.Checked = toolStripButtonShowBB.Checked = _ui.ShowBBs;
             showAnimationSkeletonToolStripMenuItem.Checked = toolStripButtonShowSkeleton.Checked = _ui.ShowSkeleton;
 
+            GraphicsContext[] graphicsContexts = new GraphicsContext[4];
+            graphicsContexts[0] = (GraphicsContext)GraphicsContext.CurrentContext;
+            if (useIO)
+            {
+            capturePreview2 = new CapturePreview(this,2);
+            capturePreview1 = new CapturePreview(this,1);
+            capturePreview1.Location = CoreSettings.CoreSettings.Default.LocationCam1;
+            capturePreview2.Location = CoreSettings.CoreSettings.Default.LocationCam2;
+            outputGenerator = new OutputGenerator();
+            outputGenerator.Location = CoreSettings.CoreSettings.Default.LocationOutput;
+            }
+            graphicsContexts[0] = (GraphicsContext)GraphicsContext.CurrentContext;
+            GraphicsMode gm = new GraphicsMode(new ColorFormat(32), 24, 8, 0);
+
             // manually register the MouseWheel handler
-            glControl1.MouseWheel += OnMouseMove;
+            renderControl1.MouseWheel += OnMouseMove;
 
             // intercept all key events sent to children
             KeyPreview = true;
-
-            InitRecentList();
+            if (useIO)
+            {
+                NDIFinder = new NewTek.NDI.Finder(true);
+            }
+            else
+            {
+                setDynamicSourceToolStripMenuItem.Text = "Inputs/Outputs are OFF";
+            }
 
 #if LEAP
             //LeapMotion Support
             _leapListener = new LeapListener(this as MainWindow);
             _leapController = new Controller(_leapListener);
 #endif
-
-            // register listener for tab changs
-           tabControl1.SelectedIndexChanged += (object o, EventArgs e) => {
+            // register listener for tab changes
+            tabControl1.SelectedIndexChanged += (object o, EventArgs e) => {
                if (SelectedTabChanged != null)
                {
                    SelectedTabChanged(UiState.TabForId(tabControl1.SelectedTab));
                }
            };
 
-            _initialized = true;
             StartUndoRedoUiStatePollLoop();
+
+            InitRecentList();
+            const string installed = "testscenes/scenes/TestCube.fbx";
+            string repos;
+            repos = "../../../testdata/scenes/PolasVRS-V1.fbx";
+            repos = "../../../testdata/scenes/testXYZ.fbx";
+            repos = "../../../testdata/scenes/TableTest1mForDae.dae";
+            repos = "E:\\vr-software\\Scenes\\PolasVRS-V1.fbx";
+            repos = "../../../testdata/scenes/testXYZ.fbx";
+            //AddTab(File.Exists(repos) ? repos : installed);
+            ProcessPriorityClass Priority = ProcessPriorityClass.High;
+            Process MainProcess = Process.GetCurrentProcess();
+             MainProcess.PriorityClass = Priority;
+            _initialized = true;
+            CloseTab(_emptyTab);
         }
 
         public override sealed string Text
@@ -151,10 +226,40 @@ namespace open3mod
             set { base.Text = value; }
         }
 
+        public static NewTek.NDI.Source[] FindNDISources()
+        {
+            int index = 0;
+            NewTek.NDI.Source[] NewNDISources = null;
+            for (int i = 0; i < MainWindow.NDIFinder.Sources.Count; i++)
+            {
+                bool isOwn = false;
+                for (int j = 0; j < Renderer.streamName.Length; j++)
+                {
+                    if (Renderer.streamName[j] == MainWindow.NDIFinder.Sources.ElementAt(i).SourceName) isOwn = true;
+                }
+                if (!isOwn)
+                {
+                    if (NewNDISources == null)
+                    {
+                        NewNDISources = new NewTek.NDI.Source[1];
+                    }
+                    else
+                    {
+                        int oldLen = NewNDISources.Length;
+                        Array.Resize(ref NewNDISources, oldLen + 1);
+                    }
+                    NewNDISources[index] = MainWindow.NDIFinder.Sources.ElementAt(i);
+                    index++;
+                }
+            }
+            return NewNDISources;
+        }
+
 
         /// <summary>
         /// Add an "empty" tab if it doesn't exist yet
         /// </summary>
+
         private void AddEmptyTab()
         {
             // create default tab
@@ -174,18 +279,37 @@ namespace open3mod
         protected override void OnCreateControl()
         {
             base.OnCreateControl();
-
             DelayExecution(TimeSpan.FromSeconds(2),
                 MaybeShowTipOfTheDay);
 
             DelayExecution(TimeSpan.FromSeconds(20),
                 MaybeShowDonationDialog);
+
+            if (CoreSettings.CoreSettings.Default.AutoStart && useIO)
+            {
+                CoreSettings.CoreSettings.Default.Genlock = false;
+                CoreSettings.CoreSettings.Default.KeepTimingRight = false;
+                int delay = 5;
+                DelayExecution(TimeSpan.FromSeconds(delay),
+                    capturePreview1.StartCapture);
+                //   DelayExecution(TimeSpan.FromSeconds(delay+1),
+                //      capturePreview2.StartCapture);
+                DelayExecution(TimeSpan.FromSeconds(delay+2),
+                    GenlockOn);
+              //  DelayExecution(TimeSpan.FromSeconds(delay+3),
+                //    outputGenerator.StartRunning);
+            }
         }
 
 
+        private static void GenlockOn()
+        {
+           CoreSettings.CoreSettings.Default.Genlock = true;
+        }
+
         private static void MaybeShowTipOfTheDay()
         {
-            if (CoreSettings.CoreSettings.Default.ShowTipsOnStartup)
+            if (CoreSettings.CoreSettings.Default.ShowTipsOnStartup && !useIO)
             {
                 var tip = new TipOfTheDayDialog();
                 tip.ShowDialog();
@@ -212,7 +336,7 @@ namespace open3mod
         /// Initial value for the donation countdown - every time the application is launched,
         /// a counter is decremented. Upon reaching 0, the user is asked to donate.
         /// </summary>
-        private const int DonationCounterStart = 10;
+        private const int DonationCounterStart = 1000;
 
 
         private static void MaybeShowDonationDialog()
@@ -241,14 +365,13 @@ namespace open3mod
             tui.Size = ui.ClientSize;
             tui.AutoSize = false;
             tui.Dock = DockStyle.Fill;
-            ;
             ui.Controls.Add(tui);
         }
 
 
         private void ActivateUiTab(TabPage ui)
         {
-            ((TabUiSkeleton)ui.Controls[0]).InjectGlControl(glControl1);
+            ((TabUiSkeleton)ui.Controls[0]).InjectGlControl(renderControl1);
             if (_renderer != null)
             {
                 _renderer.TextOverlay.Clear();
@@ -282,7 +405,8 @@ namespace open3mod
         /// <param name="async">Specifies whether the data is loaded asynchr.</param>
         /// <param name="setActive">Specifies whether the newly added tab will
         /// be selected when the loading process is complete.</param>
-        public void AddTab(string file, bool async = true, bool setActive = true)
+
+        public void AddTab(string file, bool async = true, bool setActive = true, bool delayStart = false)
         {
             AddRecentItem(file);
 
@@ -321,9 +445,11 @@ namespace open3mod
                 TabChanged(t, true);
             }
 
-            if (async)
+            if (async & false)
+            //if (async)..well, but also we need to keep the same thread due to OpenGL
             {
-                var th = new Thread(() => OpenFile(t, setActive));
+                var th = new Thread(() => OpenFile(t, setActive, delayStart)); //if we are starting the app we need to wait for MainWindow
+                th.SetApartmentState(ApartmentState.STA);
                 th.Start();
             }
             else
@@ -333,7 +459,7 @@ namespace open3mod
 
             if (_emptyTab != null)
             {
-                CloseTab(_emptyTab);
+               CloseTab(_emptyTab);
             }
         }
 
@@ -343,6 +469,7 @@ namespace open3mod
         /// </summary>
         private void InitRecentList()
         {
+            //ClearRecentList();
             recentToolStripMenuItem.DropDownItems.Clear();
             var v = CoreSettings.CoreSettings.Default.RecentFiles;
             if (v == null)
@@ -352,10 +479,26 @@ namespace open3mod
             }
             foreach (var s in v)
             {
-                var tool = recentToolStripMenuItem.DropDownItems.Add(Path.GetFileName(s));
                 var path = s;
+                var tool = recentToolStripMenuItem.DropDownItems.Add(Path.GetFileName(path));
                 tool.Click += (sender, args) => AddTab(path);
+                //path is in collection, we show name only
             }
+        }
+
+        /// <summary>
+        /// Clears Recent Menu
+        /// </summary>
+        private void ClearRecentList()
+        {
+            recentToolStripMenuItem.DropDownItems.Clear();
+            var v = CoreSettings.CoreSettings.Default.RecentFiles;
+            if (v == null)
+            {
+                v = CoreSettings.CoreSettings.Default.RecentFiles = new StringCollection();
+                CoreSettings.CoreSettings.Default.Save();
+            }
+            CoreSettings.CoreSettings.Default.RecentFiles.Clear();
         }
 
 
@@ -365,15 +508,17 @@ namespace open3mod
         /// <param name="file"></param>
         private void AddRecentItem(string file)
         {
+            if (string.IsNullOrEmpty(file)) return;
             var recent = CoreSettings.CoreSettings.Default.RecentFiles;
-
+            string removedStr = "";
             bool removed = false;
             int i = 0;
             foreach (var s in recent)
             {
-                if (s == file)
+                if ((s == file))
                 {
                     recentToolStripMenuItem.DropDownItems.RemoveAt(i);
+                    removedStr = s;
                     recent.Remove(s);
                     removed = true;
                     break;
@@ -386,7 +531,14 @@ namespace open3mod
                 recent.RemoveAt(recent.Count - 1);
             }
 
-            recent.Insert(0, file);
+            if (removed)
+            {
+                recent.Insert(0, removedStr);
+            }
+            else
+            {
+                recent.Insert(0, file);
+            }
             CoreSettings.CoreSettings.Default.Save();
 
             recentToolStripMenuItem.DropDownItems.Insert(0, new ToolStripMenuItem(
@@ -395,6 +547,22 @@ namespace open3mod
                 (sender, args) => AddTab(file)));
         }
 
+        /// <summary>
+        /// Add a new item to the Recent-tabs list menu and save it persistently
+        /// </summary>
+        /// <param name="file"></param>
+        private void AddRecentTabsItem(string file, string tabData)
+        {
+            var recent = CoreSettings.CoreSettings.Default.RecentTabs;
+            if (recent == null)
+            {
+                recent = CoreSettings.CoreSettings.Default.RecentTabs = new StringCollection();
+                CoreSettings.CoreSettings.Default.Save();
+            }
+            if (string.IsNullOrEmpty(file)) return;
+            recent.Insert(0, file + tabData);
+            CoreSettings.CoreSettings.Default.Save();
+        }
 
         /// <summary>
         /// Generate a suitable caption to display on a scene tab given a
@@ -437,6 +605,8 @@ namespace open3mod
         private void CloseTab(TabPage tab)
         {
             Debug.Assert(tab != null);
+            if ((tab == tabControl1.SelectedTab)&& (tab != _emptyTab)) CoreSettings.CoreSettings.Default.ViewsStatus = _ui.ActiveTab.getViewsStatusString();//save active status 
+            //AddRecentItem(_ui.ActiveTab.File);
 
             // If this is the last tab, we need to add an empty tab before we remove it
             if (tabControl1.TabCount == 1)
@@ -491,21 +661,20 @@ namespace open3mod
         public void SelectTab(TabPage tab)
         {
             Debug.Assert(tab != null);
+            CoreSettings.CoreSettings.Default.ViewsStatus = _ui.ActiveTab.getViewsStatusString();//save previous tab last status 
+            Matrix4 oldSingleView = Matrix4.Identity;
+            var camIn = UiState.ActiveTab.ActiveCameraControllerForView(Tab.ViewIndex.Index4);
+            if (camIn != null) oldSingleView = UiState.ActiveTab.ActiveCameraControllerForView(Tab.ViewIndex.Index4).GetViewNoOffset(); 
+
+
             tabControl1.SelectedTab = tab;
 
             var outer = UiState.TabForId(tab);
             Debug.Assert(outer != null);
-
-            if (outer.ActiveScene != null)
-            {
-                toolStripStatistics.Text = outer.ActiveScene.StatsString;
-            }
-            else
-            {
-                toolStripStatistics.Text = "";
-            }
             // update internal housekeeping
             UiState.SelectTab(tab);
+
+            _ui.ActiveTab.loadViewsStatusString();
 
             // update UI check boxes
             var vm = _ui.ActiveTab.ActiveViewMode;
@@ -513,11 +682,11 @@ namespace open3mod
                 vm == Tab.ViewMode.Single 
                 ? CheckState.Checked 
                 : CheckState.Unchecked;
-            twoViewsToolStripMenuItem.CheckState = toolStripButtonTwoViews.CheckState = 
-                vm == Tab.ViewMode.Two 
+            twoViewsAToolStripMenuItem.CheckState = toolStripButtonTwoViewsA.CheckState = 
+                vm == Tab.ViewMode.TwoVertical 
                 ? CheckState.Checked 
                 : CheckState.Unchecked;
-            twoViewsHorToolStripMenuItem.CheckState = toolStripButtonTwoViewsHor.CheckState =
+            twoViewsBToolStripMenuItem.CheckState = toolStripButtonTwoViewsB.CheckState =
                 vm == Tab.ViewMode.TwoHorizontal
                 ? CheckState.Checked
                 : CheckState.Unchecked;
@@ -528,6 +697,21 @@ namespace open3mod
 
             // some other UI housekeeping, this also injects the GL panel into the tab
             ActivateUiTab(tab);
+            var camOut = UiState.ActiveTab.ActiveCameraControllerForView(Tab.ViewIndex.Index4);
+            if ((camIn != null)&& (camOut != null)) camOut.SetViewNoOffset(oldSingleView);
+            var insp = UiForTab(_ui.ActiveTab).GetInspector();
+            if (insp != null) insp.SelectPlaybackView();
+            string statusText = CoreSettings.CoreSettings.Default.UseSceneLights ? "" : " | Keep right mouse button pressed to move light source";
+            if (outer.ActiveScene != null)
+            {
+                statusText += " | Scene scale: " + outer.ActiveScene.Scale.ToString() + "x ";
+                toolStripStatistics.Text = outer.ActiveScene.StatsString + statusText;
+            }
+            else
+            {
+                toolStripStatistics.Text = statusText;
+            }
+
         }
 
 
@@ -551,18 +735,18 @@ namespace open3mod
         /// Opens a particular 3D model and assigns it to a particular tab.
         /// May be called on a non-GUI-thread.
         /// </summary>
-        private void OpenFile(Tab tab, bool setActive)
+        private void OpenFile(Tab tab, bool setActive, bool delayStart = false)
         {
             try
             {
-                tab.ActiveScene = new Scene(tab.File);
+                if (delayStart) Thread.Sleep(1000);
+                tab.ActiveScene = new Scene(tab.File,_renderer);
                 CoreSettings.CoreSettings.Default.CountFilesOpened++;
             }
             catch(Exception ex)
             {
                 tab.SetFailed(ex.Message);
             }
-
             var updateTitle = new MethodInvoker(() =>
             {
                 var t = (TabPage)tab.Id;
@@ -650,20 +834,19 @@ namespace open3mod
             {
                 _renderer.Dispose();
             }
-
-            _renderer = new Renderer(this);           
+            _renderer = new Renderer(this);
 
 #if USE_APP_IDLE
             // register Idle event so we get regular callbacks for drawing
             Application.Idle += ApplicationIdle;
 #else
             _timer = new System.Windows.Forms.Timer();
-            _timer.Interval = 20;
+            _timer.Interval = mainTiming*4;
             _timer.Tick += ApplicationIdle;
             _timer.Start();
+
 #endif
         }
-
 
         private void OnGlResize(object sender, EventArgs e)
         {
@@ -671,7 +854,6 @@ namespace open3mod
             {
                 return;
             }
-
             _renderer.Resize();
         }
 
@@ -682,29 +864,57 @@ namespace open3mod
             {
                 return;
             }
-
             FrameRender();
         }
 
 
         private void ApplicationIdle(object sender, EventArgs e)
-        {           
-            if(IsDisposed)
+        {
+            if (IsDisposed)
             {
                 return;
             }
+         //    if (_renderer.timeTrack) Console.WriteLine("Start AppIdle {0}", _renderer._runsw.Elapsed.TotalMilliseconds);
 #if USE_APP_IDLE
-            while (glControl1.IsIdle)
+            while (renderControl1.IsIdle)
 #endif
             {
-                FrameUpdate();
-                FrameRender();
+                if (!CoreSettings.CoreSettings.Default.Genlock)
+                {
+                    FrameUpdate();
+                    FrameRender();
+                }
+
+                if (firstRun)
+                {
+                    CloseTab(_emptyTab);
+                    firstRun = false;
+                    if (CoreSettings.CoreSettings.Default.RecentTabs != null)
+                    {
+                        for (int i = CoreSettings.CoreSettings.Default.RecentTabs.Count - 1; i >= 0; i--)
+                        {
+                            var s = CoreSettings.CoreSettings.Default.RecentTabs[i];
+                            string[] recentData = s.Split(recentDataSeparator, StringSplitOptions.None);
+                            Thread.Sleep(500);
+                            AddTab(recentData[0], true, false, true);
+                        }
+                    }
+                }
+                _renderer.timeTrack("End App Idle");
             }
+        }
+
+        private void FrameLoop(bool videoFrameArrived, int m_number, IntPtr videoData)
+        {
+            if (!videoFrameArrived) return;
+            if (!CoreSettings.CoreSettings.Default.Genlock) return;
+            FrameUpdate();
+            FrameRender();
         }
 
 
         private void FrameUpdate()
-        {          
+        {
             _fps.Update();
             var delta = _fps.LastFrameDelta;
 
@@ -716,15 +926,19 @@ namespace open3mod
                     tab.ActiveScene.Update(delta, tab != UiState.ActiveTab);
                 }
             }
-
             ProcessKeys();
+            OpenVRInterface.ProcessAllButtons();
         }
 
 
         private void FrameRender()
         {
             _renderer.Draw(_ui.ActiveTab);
-            glControl1.SwapBuffers();
+            _renderer.timeTrack("23-EndDraw");
+            renderControl1.CopyToOnScreenFramebuffer();
+            _renderer.timeTrack("24-Copied");
+            renderControl1.SwapBuffers();
+            _renderer.timeTrack("25-BuffSwitched");
         }
 
 
@@ -734,6 +948,18 @@ namespace open3mod
             framerateToolStripMenuItem.Checked = toolStripButtonShowFPS.Checked = _ui.ShowFps;
         }
 
+        private void ToggleModels(object sender, EventArgs e)
+        {
+            _ui.ShowVRModels = !_ui.ShowVRModels;
+            showVRModelsToolStripMenuItem.Checked = toolStripButtonShowVRModels.Checked = _ui.ShowVRModels;
+
+        }
+
+        private void ToggleUseSceneLights(object sender, EventArgs e)
+        {
+            _ui.UseSceneLights = !_ui.UseSceneLights;
+            useSceneLightsToolStripMenuItem.Checked = toolStripButtonUseSceneLights.Checked = _ui.UseSceneLights; 
+        }
 
         private void ToggleShading(object sender, EventArgs e)
         {
@@ -789,13 +1015,13 @@ namespace open3mod
         private void UncheckViewMode()
         {
             toolStripButtonFullView.CheckState = CheckState.Unchecked;
-            toolStripButtonTwoViews.CheckState = CheckState.Unchecked;
-            toolStripButtonTwoViewsHor.CheckState = CheckState.Unchecked;
+            toolStripButtonTwoViewsA.CheckState = CheckState.Unchecked;
+            toolStripButtonTwoViewsB.CheckState = CheckState.Unchecked;
             toolStripButtonFourViews.CheckState = CheckState.Unchecked;
 
             fullViewToolStripMenuItem.CheckState = CheckState.Unchecked;
-            twoViewsToolStripMenuItem.CheckState = CheckState.Unchecked;
-            twoViewsHorToolStripMenuItem.CheckState = CheckState.Unchecked;
+            twoViewsAToolStripMenuItem.CheckState = CheckState.Unchecked;
+            twoViewsBToolStripMenuItem.CheckState = CheckState.Unchecked;
             fourViewsToolStripMenuItem.CheckState = CheckState.Unchecked;
         }
 
@@ -823,22 +1049,22 @@ namespace open3mod
             UiState.ActiveTab.ActiveViewMode = Tab.ViewMode.TwoHorizontal;
 
             UncheckViewMode();
-            toolStripButtonTwoViewsHor.CheckState = CheckState.Checked;
-            twoViewsHorToolStripMenuItem.CheckState = CheckState.Checked;
+            toolStripButtonTwoViewsB.CheckState = CheckState.Checked;
+            twoViewsBToolStripMenuItem.CheckState = CheckState.Checked;
         }
 
 
         private void ToggleTwoViews(object sender, EventArgs e)
         {
-            if (UiState.ActiveTab.ActiveViewMode == Tab.ViewMode.Two)
+            if (UiState.ActiveTab.ActiveViewMode == Tab.ViewMode.TwoVertical)
             {
                 return;
             }
-            UiState.ActiveTab.ActiveViewMode = Tab.ViewMode.Two;
+            UiState.ActiveTab.ActiveViewMode = Tab.ViewMode.TwoVertical;
 
             UncheckViewMode();
-            toolStripButtonTwoViews.CheckState = CheckState.Checked;
-            twoViewsToolStripMenuItem.CheckState = CheckState.Checked;
+            toolStripButtonTwoViewsA.CheckState = CheckState.Checked;
+            twoViewsAToolStripMenuItem.CheckState = CheckState.Checked;
         }
 
 
@@ -916,18 +1142,30 @@ namespace open3mod
             }
         }
 
+        string[] names;
 
         private void OnFileMenuOpen(object sender, EventArgs e)
         {
-            if(openFileDialog.ShowDialog() == DialogResult.OK)
+            var th = new Thread(() => FileMenuOpenAsync()); 
+            th.SetApartmentState(ApartmentState.STA);
+            th.Start();
+            th.Join();
+            var first = true;
+            if (names != null)
             {
-                var names = openFileDialog.FileNames;
-                var first = true;
-                foreach(var name in names)
+                foreach (var name in names)
                 {
-                    AddTab(name,true, first);
+                    AddTab(name, false, first);
                     first = false;
                 }
+            }
+        }
+
+        private void FileMenuOpenAsync()
+        {
+            if (openFileDialog.ShowDialog() == DialogResult.OK)
+            {
+                names = openFileDialog.FileNames;
             }
         }
 
@@ -955,7 +1193,14 @@ namespace open3mod
 
 
         private void OnCloseForm(object sender, FormClosedEventArgs e)
-        {           
+        {
+            if (useIO)
+            {
+                capturePreview1.Dispose();
+                capturePreview2.Dispose();
+                outputGenerator.Dispose();
+            }
+
             UiState.Dispose();
             _renderer.Dispose();
         }
@@ -1093,6 +1338,23 @@ namespace open3mod
 
         private void OnClosing(object sender, FormClosingEventArgs e)
         {
+            if (useIO)
+            {
+                capturePreview1.StopCapture();
+                capturePreview2.StopCapture();
+                outputGenerator.StopRunning();
+                CoreSettings.CoreSettings.Default.LocationCam1 = capturePreview1.Location;
+                CoreSettings.CoreSettings.Default.LocationCam2 = capturePreview2.Location;
+                CoreSettings.CoreSettings.Default.LocationOutput = outputGenerator.Location;
+            }
+
+            CoreSettings.CoreSettings.Default.ViewsStatus = _ui.ActiveTab.getViewsStatusString();//read status 
+            //CoreSettings.CoreSettings.Default.RecentTabsOpened = tabControl1.TabPages.Count;
+            if (CoreSettings.CoreSettings.Default.RecentTabs != null) CoreSettings.CoreSettings.Default.RecentTabs.Clear();
+            for (int i = 0; i< _ui.Tabs.Count;i++)
+            {
+                AddRecentTabsItem(_ui.Tabs[i].File,"");
+            }
             if (WindowState == FormWindowState.Maximized)
             {
                 CoreSettings.CoreSettings.Default.Location = RestoreBounds.Location;
@@ -1105,6 +1367,7 @@ namespace open3mod
                 CoreSettings.CoreSettings.Default.Size = Size;
                 CoreSettings.CoreSettings.Default.Maximized = false;
             }
+            CoreSettings.CoreSettings.Default.SecondsToPhotons = OpenVRInterface.fPredictedSecondsToPhotonsFromNow;
             CoreSettings.CoreSettings.Default.Save();
 
 #if LEAP
@@ -1171,7 +1434,7 @@ namespace open3mod
 
         private void linkLabelWebsite_LinkClicked(object sender, LinkLabelLinkClickedEventArgs e)
         {
-            Process.Start("http://www.open3mod.com/");
+            Process.Start("http://www.polas.cz/");
         }
 
         // Hardcoded sample files with paths adjusted for running from
@@ -1300,13 +1563,16 @@ namespace open3mod
             {
                 return;
             }
-      
             activeTab.ActiveScene = null;
-            new Thread(
+/*            new Thread(
                 () => {
-                    activeTab.ActiveScene = new Scene(activeTab.File);
+                    activeTab.ActiveScene = new Scene(activeTab.File, _renderer);
                     BeginInvoke(new Action(() => PopulateInspector(activeTab)));
                 }).Start();
+                */
+                //if we keep the same OpenGLContext We cannot start new thread,
+                    activeTab.ActiveScene = new Scene(activeTab.File, _renderer);
+                    BeginInvoke(new Action(() => PopulateInspector(activeTab)));
         }
 
         private void OnGenerateNormals(object sender, EventArgs e)
@@ -1342,7 +1608,93 @@ namespace open3mod
             // Keep in sync with CoreSettings.settings.
             CoreSettings.CoreSettings.Default.BackgroundColor = Color.DarkGray;
         }
+
+        private void OnChangeBackgroundAlpha(object sender, EventArgs e)
+        {
+            ColorDialog colorPicker = new ColorDialog();
+            colorPicker.FullOpen = true;
+            colorPicker.Color = CoreSettings.CoreSettings.Default.BackgroundAlpha;
+            colorPicker.ShowDialog();
+            CoreSettings.CoreSettings.Default.BackgroundAlpha = colorPicker.Color;
+        }
+
+        [DllImport("kernel32.dll", EntryPoint = "CopyMemory", SetLastError = false)]
+        public static extern void CopyMemory(IntPtr dest, IntPtr src, uint count);
+
+        private void ShowCaptureWindows_Click(object sender, EventArgs e)
+        {
+            if (useIO)
+            {
+                capturePreview1.Show();
+                capturePreview2.Show();
+                outputGenerator.Show();
+            }
+        }
+        [System.ComponentModel.Browsable(false)]
+
+        public void callFrameLoop(int m_number, IntPtr videoData)
+        {
+            MethodInvoker method = () => FrameLoop(true, m_number, videoData);
+
+            if (_renderer == null) return;
+            _renderer.uploadCameraBuffer(m_number, videoData);
+            if (m_number == _renderer.syncCamera)
+            {
+                if (InvokeRequired)
+                {
+                    Thread.Sleep(5);
+                    BeginInvoke(method);//should not be waiting for FrameLoop
+                }
+                else
+                {
+                    method();
+                }
+            }
+        }
+
+        public void handleAudio(int m_number, IntPtr audioData)
+        {
+            if (m_number == _renderer.syncCamera) outputGenerator.addAudioFrame(audioData);
+        }
+
+        private void setDynamicSourceToolStripMenuItem_Click(object senderExt, EventArgs e)
+        {
+            if (MainWindow.useIO)
+            {
+                setDynamicSourceToolStripMenuItem.Text = "Loooking for Dynamic Sources";
+                _NDISources = MainWindow.FindNDISources();
+                if (_NDISources == null) return;
+                setDynamicSourceToolStripMenuItem.DropDownItems.Clear();
+                for (int i = 0; i < _NDISources.Count(); i++)
+                {
+                    var Name = _NDISources[i].Name;
+                    var tool = setDynamicSourceToolStripMenuItem.DropDownItems.Add(Name);
+                    tool.Click += (sender, args) => selectDynamicSource(Name);
+                }
+                if (_NDISources.Count() > 0) setDynamicSourceToolStripMenuItem.Text = "Choose Dynamic Source";
+                else setDynamicSourceToolStripMenuItem.Text = "Find Dynamic Sources";
+            }
+        }
+
+        private void selectDynamicSource(string Name)
+        {
+            _selectedNDISource = null;
+            for (int i = 0; i < _NDISources.Count(); i++)
+            {
+                if (Name == _NDISources[i].Name)
+                {
+                    _selectedNDISource = _NDISources[i];
+                    _renderer.ConnectNDI(_NDISources[i]);
+                }
+            }
+        }
+
+        private void trackBarBrightness_Scroll(object sender, EventArgs e)
+        {
+            GraphicsSettings.Default.Save();
+        }
     }
+
 }
 
 /* vi: set shiftwidth=4 tabstop=4: */ 

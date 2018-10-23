@@ -25,7 +25,6 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 
-
 using OpenTK;
 
 using OpenTK.Graphics;
@@ -119,7 +118,8 @@ namespace open3mod
             int result;
 
             _vs = GL.CreateShader(ShaderType.VertexShader);
-            GL.ShaderSource(_vs, string.Format("#version 130\n{0}\n{1}", defines, vertexShader));
+            string src = string.Format("#version 450\n{0}\n{1}", defines, vertexShader);
+            GL.ShaderSource(_vs, string.Format("#version 450\n{0}\n{1}", defines, vertexShader));
             GL.CompileShader(_vs);
             GL.GetShader(_vs, ShaderParameter.CompileStatus, out result);
             if (result == 0)
@@ -131,7 +131,7 @@ namespace open3mod
             }
 
             _fs = GL.CreateShader(ShaderType.FragmentShader);
-            GL.ShaderSource(_fs, string.Format("#version 130\n{0}\n{1}", defines, fragmentShader));
+            GL.ShaderSource(_fs, string.Format("#version 450\n{0}\n{1}", defines, fragmentShader));
             GL.CompileShader(_fs);
             GL.GetShader(_fs, ShaderParameter.CompileStatus, out result);
             if (result == 0)
@@ -145,7 +145,7 @@ namespace open3mod
             GL.AttachShader(Program, _fs);
 
             GL.LinkProgram(Program);
-            GL.GetProgram(Program, ProgramParameter.LinkStatus, out result);
+            GL.GetProgram(Program, GetProgramParameterName.LinkStatus, out result);
             if (result == 0)
             {
                 Debug.WriteLine(GL.GetProgramInfoLog(Program));
@@ -154,13 +154,10 @@ namespace open3mod
             }
         }
 
-
-
         public int Program
         {
             get { return _program; }
         }
-
 
 
 #if DEBUG
@@ -200,7 +197,18 @@ namespace open3mod
             GL.Uniform3(GetVariableLocation(name), v);
         }
 
+        public void SetFloat(string name, float v)
+        {
+            BindIfNecessary();
+            GL.Uniform1(GetVariableLocation(name), v);
+        }
         public void SetVec4(string name, Vector4 v)
+        {
+            BindIfNecessary();
+            GL.Uniform4(GetVariableLocation(name), v);
+        }
+
+        public void SetCol4(string name, Color4 v)
         {
             BindIfNecessary();
             GL.Uniform4(GetVariableLocation(name), v);
@@ -212,14 +220,69 @@ namespace open3mod
             GL.UniformMatrix4(GetVariableLocation(name), false, ref v);
         }
 
+        public void SetLights(GLLight[] lights, int count)
+        {
+            BindIfNecessary();
+            for (int i = 0; i < count; ++i)
+            {
+                string prefix = "Lights[" + i.ToString() + "].";
+                string name = prefix;
+                int loc;
+
+                name = prefix + "lightType";
+                loc = GetVariableLocation(name);
+                if (loc != -1) GL.Uniform1(loc, lights[i].lightType);
+                name = prefix + "position";
+                loc = GetVariableLocation(name);
+                if (loc != -1) GL.Uniform3(loc, lights[i].position);
+                name = prefix + "direction";
+                loc = GetVariableLocation(name);
+                if (loc != -1) GL.Uniform3(loc, lights[i].direction);
+                name = prefix + "ambient";
+                loc = GetVariableLocation(name);
+                if (loc != -1) GL.Uniform3(loc, lights[i].ambient);
+                name = prefix + "diffuse";
+                loc = GetVariableLocation(name);
+                if (loc != -1) GL.Uniform3(loc, lights[i].diffuse);
+                name = prefix + "specular";
+                loc = GetVariableLocation(name);
+                if (loc != -1) GL.Uniform3(loc, lights[i].specular);
+                name = prefix + "constant";
+                loc = GetVariableLocation(name);
+                if (loc != -1) GL.Uniform1(loc, lights[i].constant);
+                name = prefix + "linear";
+                loc = GetVariableLocation(name);
+                if (loc != -1) GL.Uniform1(loc, lights[i].linear);
+                name = prefix + "quadratic";
+                loc = GetVariableLocation(name);
+                if (loc != -1) GL.Uniform1(loc, lights[i].quadratic);
+                name = prefix + "cutOff";
+                loc = GetVariableLocation(name);
+                if (loc != -1) GL.Uniform1(loc, lights[i].cutOff);
+                name = prefix + "outerCutOff";
+                loc = GetVariableLocation(name);
+                if (loc != -1) GL.Uniform1(loc, lights[i].outerCutOff);
+            }
+
+        }
+
         public void BindIfNecessary()
         {
-            if (_programBound == _program)
+            GL.GetInteger(GetPName.CurrentProgram, out int curprogram);
+            //            if (_programBound == _program)
+            if (curprogram == _program)
             {
                 return;
             }
-            GL.UseProgram(_program);
-            _programBound = _program;
+            GL.GetProgram(_program, GetProgramParameterName.ValidateStatus, out int parametry);
+
+            if (parametry == 1)
+            {
+                GL.UseProgram(_program);// Using this program screwes all, even classic GL
+                _programBound = _program;
+            }
+
+            GL.GetProgram(_program, GetProgramParameterName.ValidateStatus, out parametry);
         }
 
         public static void Unbind()
@@ -235,7 +298,7 @@ namespace open3mod
                 int location = GL.GetUniformLocation(_program, name);
                 if (location == -1)
                 {
-                    throw new Exception("Failed to lookup variable: " + name);
+                   // throw new Exception("Failed to lookup variable: " + name); //with larger arrays something is always -1 even when it works
                 }
                 _variables[name] = location;
             }

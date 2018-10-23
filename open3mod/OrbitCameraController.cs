@@ -27,16 +27,19 @@ namespace open3mod
     public class OrbitCameraController : ICameraController
     {
         private Matrix4 _view;
-        private Matrix4 _viewWithOffset;
+        private Matrix4 _viewLookAtAndPan;
         private float _cameraDistance;
-        private float _pitchAngle = 0.8f;
+        private float _pitchAngle = 0.0f;
         private float _rollAngle = 0.0f;
         private readonly Vector3 _right;
         private readonly Vector3 _up;
         private readonly Vector3 _front;
-        private CameraMode _mode;
-
         private Vector3 _panVector;
+        private ScenePartMode _scenePartMode = ScenePartMode.All;
+        private CameraMode _cameraMode;
+        private float _fovy = MathHelper.PiOver4;
+        private float _zNear = 0.01f;
+        private float _zFar = 100.0f;
 
         private bool _dirty = true;
 
@@ -48,16 +51,17 @@ namespace open3mod
         /// </summary>
         private const float RotationSpeed = 0.5f;
         private const float PanSpeed = 0.004f;
-        private const float InitialCameraDistance = 3.0f;
+        private const float InitialCameraDistance = 2.5f;
 
         private Vector3 _pivot;
 
 
-        public OrbitCameraController(CameraMode camMode)
+        public OrbitCameraController(CameraMode camMode, float fovy, ScenePartMode scenePartMode)
         {
-            _view = Matrix4.CreateFromAxisAngle(new Vector3(0.0f, 1.0f, 0.0f), 0.9f);
-
-            _viewWithOffset = Matrix4.Identity;
+            _view = Matrix4.CreateFromAxisAngle(new Vector3(0.0f, 1.0f, 0.0f), 0.0f);
+            _fovy = fovy;
+            _scenePartMode = scenePartMode;
+            _viewLookAtAndPan = Matrix4.Identity;
 
             _cameraDistance = InitialCameraDistance;
 
@@ -65,9 +69,8 @@ namespace open3mod
             _up = Vector3.UnitY;
             _front = Vector3.UnitZ;
 
-            SetOrbitOrConstrainedMode(camMode, true);           
+            SetOrbitOrConstrainedMode(camMode, true);
         }
-
 
         public void SetPivot(Vector3 pivot)
         {
@@ -75,7 +78,10 @@ namespace open3mod
             _dirty = true;
         }
 
-
+        public void SetViewNoOffset(Matrix4 view)
+        {
+            _viewLookAtAndPan = view;
+        }
 
         public Matrix4 GetView()
         {
@@ -83,7 +89,26 @@ namespace open3mod
             {
                 UpdateViewMatrix();
             }
-            return _viewWithOffset;
+            return OpenVRInterface.viewOffset * _viewLookAtAndPan;
+        }
+
+        public Matrix4 GetViewNoOffset()
+        {
+            return _viewLookAtAndPan;
+        }
+
+        public float GetFOV()
+        {
+            return _fovy;
+        }
+
+        public void SetParam(float fovy, ScenePartMode scenePartMode, CameraMode mode)
+        {
+            Debug.Assert((mode == CameraMode.X) || (mode == CameraMode.Y) || (mode == CameraMode.Z)||(mode == CameraMode.Orbit));
+            _scenePartMode = scenePartMode;
+            _cameraMode = mode;
+            _fovy = fovy;
+            SetOrbitOrConstrainedMode(mode, false);
         }
 
 
@@ -137,19 +162,27 @@ namespace open3mod
 
         public CameraMode GetCameraMode()
         {
-            return _mode;
+            return _cameraMode;
         }
 
+        public ScenePartMode GetScenePartMode()
+        {
+            return _scenePartMode;
+        }
+
+        public void SetScenePartMode(ScenePartMode value)
+        {
+            _scenePartMode = value;
+        }
 
         private void UpdateViewMatrix()
         {
             var viewWithPitchAndRoll = _view * Matrix4.CreateFromAxisAngle(_right, _pitchAngle) * Matrix4.CreateFromAxisAngle(_front, _rollAngle);
-            _viewWithOffset = Matrix4.LookAt(viewWithPitchAndRoll.Column2.Xyz * _cameraDistance + _pivot, _pivot, viewWithPitchAndRoll.Column1.Xyz);
-            _viewWithOffset *= Matrix4.CreateTranslation(_panVector);
+            _viewLookAtAndPan = Matrix4.LookAt(viewWithPitchAndRoll.Column2.Xyz * _cameraDistance + _pivot, _pivot, viewWithPitchAndRoll.Column1.Xyz);
+            _viewLookAtAndPan *= Matrix4.CreateTranslation(_panVector);
 
             _dirty = false;
         }
-
 
         /// <summary>
         /// Switches the camera controller between the X,Z,Y and Orbit modes.
@@ -158,13 +191,13 @@ namespace open3mod
         /// <param name="init">Do not use</param>
         public void SetOrbitOrConstrainedMode(CameraMode cameraMode, bool init = false)
         {
-            if(_mode == cameraMode && !init)
+            if(_cameraMode == cameraMode && !init)
             {
                 return;
             }
-            _mode = cameraMode;
+            _cameraMode = cameraMode;
     
-            switch(_mode)
+            switch(_cameraMode)
             {
                 case CameraMode.X:
                     _view = new Matrix4(
@@ -198,13 +231,12 @@ namespace open3mod
                     break;
             }
 
-            //reset rotionangles if we switched to one of the constrained views
-            if (_mode != CameraMode.Orbit)
+            //reset rotationangles if we switched to one of the constrained views
+            if (_cameraMode != CameraMode.Orbit)
             {
                 _pitchAngle = 0.0f;
                 _rollAngle = 0.0f;
             }
-
             _panVector = Vector3.Zero;
 
             _dirty = true;

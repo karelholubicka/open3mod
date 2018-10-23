@@ -28,15 +28,15 @@ namespace open3mod
     public class MaterialInspectionView : ThumbnailViewBase<MaterialThumbnailControl>
     {
         private readonly Scene _scene;
-        private readonly MainWindow _window;
+        private readonly MainWindow _mainWindow;
 
         private delegate void SetLabelTextDelegate(string name, Texture tex);
 
-        public MaterialInspectionView(Scene scene, MainWindow window, FlowLayoutPanel flow)
+        public MaterialInspectionView(Scene scene, MainWindow mainWindow, FlowLayoutPanel flow)
             : base(flow)
         {
             _scene = scene;
-            _window = window;
+            _mainWindow = mainWindow;
 
             foreach (var mat in scene.Raw.Materials)
             {
@@ -58,9 +58,9 @@ namespace open3mod
         }
 
 
-        public MainWindow Window
+        public MainWindow MainWindow
         {
-            get { return _window; }
+            get { return _mainWindow; }
         }
 
 

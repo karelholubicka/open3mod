@@ -37,9 +37,14 @@ namespace open3mod
             // The normal directions are transformed using the transpose(inverse(transform)).
             // This ensures correct direction is used when non-uniform scaling is present.
             Matrix4 normalMatrix = transform;
-            normalMatrix.Invert();
-            normalMatrix.Transpose();
-
+            try
+            {
+                normalMatrix.Invert();
+                normalMatrix.Transpose();
+            }
+            catch
+            {
+            }
             // Scale by scene size because the scene will be resized to fit
             // the unit box, but the normals should have a fixed length.
             var scale = invGlobalScale * 0.05f;

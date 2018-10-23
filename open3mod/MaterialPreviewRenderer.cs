@@ -98,11 +98,14 @@ namespace open3mod
     
             _state = CompletionState.Pending;
 
-            window.Renderer.GlExtraDrawJob += (sender) =>
+            if (window.Renderer != null)
             {
-                _state = !RenderPreview() ? CompletionState.Failed : CompletionState.Done;
-                OnPreviewAvailable();
-            };
+                window.Renderer.GlExtraDrawJob += (sender) =>
+                {
+                    _state = !RenderPreview() ? CompletionState.Failed : CompletionState.Done;
+                    OnPreviewAvailable();
+                };
+            }
         }
 
 
@@ -150,8 +153,8 @@ namespace open3mod
             // Create Color Texture
             GL.GenTextures(1, out colorTexture);
             GL.BindTexture(TextureTarget.Texture2D, colorTexture);
-            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.NearestMipmapNearest);
-            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Nearest);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.LinearMipmapLinear);
+            GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Linear);
             // note! OpenTK.Graphics.OpenGL.TextureWrapMode clashes with Assimp.EmbeddedTextureWrapMode
             GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)TextureWrapMode.Clamp);
             GL.TexParameter(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)TextureWrapMode.Clamp);
@@ -226,6 +229,7 @@ namespace open3mod
             // return to visible framebuffer
             GL.Ext.BindFramebuffer(FramebufferTarget.FramebufferExt, 0); 
             GL.DrawBuffer(DrawBufferMode.Back);
+            GL.UseProgram(0); //in case ModernGL Material binds some
 
             EnsureTemporaryResourcesReleased(colorTexture, 
                 depthRenderbuffer, fboHandle);
@@ -290,7 +294,7 @@ namespace open3mod
             GL.Color4(Color.White);
             GL.Disable(EnableCap.Blend);
 
-            _scene.MaterialMapper.ApplyMaterial(null, _material, true, true);
+            _scene.MaterialMapper.ApplyMaterial(null, _material, true, true, false);
             // always enable depth writes when rendering material previews
             GL.DepthMask(true);
 
@@ -315,6 +319,7 @@ namespace open3mod
             Debug.Assert(_sphereVertices != null);
             Debug.Assert(_sphereElements != null);
             SphereGeometry.Draw(_sphereVertices, _sphereElements);
+            GL.Disable(EnableCap.DepthTest); //added to compensate + switch
         }
 
 

@@ -102,7 +102,7 @@ namespace open3mod
                 {
                     return;
                 }
-                _renderer = new MaterialPreviewRenderer(_owner.Window, _scene, _material,
+                _renderer = new MaterialPreviewRenderer(_owner.MainWindow, _scene, _material,
                     (uint)pictureBox.Width * (uint)(SuperSample ? 2 : 1),
                     (uint)pictureBox.Height * (uint)(SuperSample ? 2 : 1));
 

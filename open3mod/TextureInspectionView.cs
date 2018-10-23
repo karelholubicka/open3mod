@@ -81,7 +81,7 @@ namespace open3mod
                 });
 
             
-            flow.AllowDrop = true;
+           /* flow.AllowDrop = true;
             flow.DragDrop += (sender, args) =>
                 {
                     try
@@ -104,6 +104,7 @@ namespace open3mod
                         Trace.WriteLine("Error in DragDrop function: " + ex.Message);
                     }
                 };
+                */
         }
       
 
@@ -117,7 +118,6 @@ namespace open3mod
         {
             var t = new TextureThumbnailControl(this, Scene, filePath);
             AddEntry(t);
-
             TextureThumbnailControl old = null;
             t.MouseEnter += (sender, args) =>
                 {

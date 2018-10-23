@@ -54,15 +54,15 @@ namespace open3mod
 
             tabPageAnimations.Controls.Add(this);
             listBoxAnimations.Items.Add("None (Bind Pose)");
-
+            listBoxAnimations.SelectedIndex = 0;
             if (scene.Raw.Animations != null)
             {
                 foreach (var anim in scene.Raw.Animations)
                 {
                     listBoxAnimations.Items.Add(FormatAnimationName(anim));
+                    listBoxAnimations.SelectedIndex = 1;
                 }
             }
-            listBoxAnimations.SelectedIndex = 0;
 
             checkBoxLoop.Checked = _scene.SceneAnimator.Loop;
             _imagePlay = ImageFromResource.Get("open3mod.Images.PlayAnim.png");
@@ -198,6 +198,16 @@ namespace open3mod
             }
         }
 
+        public void SetTime(double pos)
+        {
+            if (pos < 0 || pos > _duration)
+            {
+                return;
+            }
+            Debug.Assert(pos >= 0);
+            _scene.SceneAnimator.AnimationCursor = pos;
+            timeSlideControl.Position = pos;
+        }
 
         private void OnChangeSelectedAnimation(object sender, EventArgs e)
         {
@@ -235,7 +245,7 @@ namespace open3mod
             }
         }
 
-        private void OnPlay(object sender, EventArgs e)
+        public void OnPlay(object sender, EventArgs e)
         {
             Playing = !Playing;
             buttonPlay.Image = Playing ? _imageStop : _imagePlay;
@@ -297,6 +307,7 @@ namespace open3mod
             }
             Debug.Assert(pos >= 0);
             _scene.SceneAnimator.AnimationCursor = pos;
+            timeSlideControl.Position = pos;
         }
 
         private void OnDeleteAnimation(object sender, EventArgs e)

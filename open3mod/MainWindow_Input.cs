@@ -37,6 +37,9 @@ namespace open3mod
         private bool _backPressed;
         private bool _upPressed;
         private bool _downPressed;
+        private bool _fovyUpPressed;
+        private bool _fovyDownPressed;
+        private bool _shiftPressed;
 
         private int _previousMousePosX = -1;
         private int _previousMousePosY = -1;
@@ -56,6 +59,7 @@ namespace open3mod
             float x = 0.0f, y = 0.0f, z = 0.0f;
 
             var changed = false;
+            var changedz = false;
 
             if (_forwardPressed)
             {
@@ -90,14 +94,41 @@ namespace open3mod
                 y -= dt;
             }
 
-            if (!changed)
+            if (changed) cam.MovementKey(x, y, z);
+
+            float step = 1.005f;
+            if (_shiftPressed) step = 1.05f;
+
+
+            if ((cam.GetScenePartMode() == ScenePartMode.Camera) || (cam.GetScenePartMode() == ScenePartMode.Composite))
+            {
+                cam = _renderer.renderingController;
+            }
+
+            float fov = cam.GetFOV();
+
+            if (_fovyUpPressed)
+            {
+                changedz = true;
+                fov = fov * step;
+            }
+            if (_fovyDownPressed)
+            {
+                changedz = true;
+                fov = fov / step;
+            }
+
+            if (!changedz)
             {
                 return;
             }
 
-            cam.MovementKey(x, y, z);
-        }
+            if (fov > MathHelper.PiOver2) fov = MathHelper.PiOver2;
+            ScenePartMode spm = cam.GetScenePartMode();
+            CameraMode cm = cam.GetCameraMode();
+            cam.SetParam(fov, spm, cm);
 
+        }
 
         private void UpdateActiveViewIfNeeded(MouseEventArgs e)
         {
@@ -117,8 +148,8 @@ namespace open3mod
         /// viewport. If not, the ViewIndex of the tab that was hit.</returns>
         private Tab.ViewIndex MousePosToViewportIndex(int x, int y)
         {
-            var xf = x / (float)glControl1.ClientSize.Width;
-            var yf = 1.0f - y / (float)glControl1.ClientSize.Height;
+            var xf = x / (float)renderControl1.ClientSize.Width;
+            var yf = 1.0f - y / (float)renderControl1.ClientSize.Height;
 
             return _ui.ActiveTab.GetViewportIndexHit(xf, yf);
         }
@@ -148,8 +179,8 @@ namespace open3mod
         /// viewport separator. If not, the separator that was hit.</returns>
         private Tab.ViewSeparator MousePosToViewportSeparator(int x, int y)
         {
-            var xf = x / (float)glControl1.ClientSize.Width;
-            var yf = 1.0f - y / (float)glControl1.ClientSize.Height;
+            var xf = x / (float)renderControl1.ClientSize.Width;
+            var yf = 1.0f - y / (float)renderControl1.ClientSize.Height;
 
             return _ui.ActiveTab.GetViewportSeparatorHit(xf, yf);
         }
@@ -176,7 +207,7 @@ namespace open3mod
             _previousMousePosX = e.X;
             _previousMousePosY = e.Y;
 
-            if(e.Button == MouseButtons.Middle)
+            if (e.Button == MouseButtons.Middle)
             {
                 _mouseWheelDown = true;
                 return;
@@ -201,6 +232,8 @@ namespace open3mod
                 _dragSeparator = sep;
                 SetViewportDragCursor(sep);
             }
+
+            CoreSettings.CoreSettings.Default.ViewsStatus = _ui.ActiveTab.getViewsStatusString();
 
             // hack: the renderer handles the input for the HUD, so forward the event
             var index = MousePosToViewportIndex(e.X, e.Y);
@@ -271,16 +304,16 @@ namespace open3mod
                 {
                     if (sep == Tab.ViewSeparator.Horizontal)
                     {
-                        SetViewportSplitV(1.0f - e.Y / (float)glControl1.ClientSize.Height);
+                        SetViewportSplitV(1.0f - e.Y / (float)renderControl1.ClientSize.Height);
                     }
                     else if (sep == Tab.ViewSeparator.Vertical)
                     {
-                        SetViewportSplitH(e.X / (float)glControl1.ClientSize.Width);
+                        SetViewportSplitH(e.X / (float)renderControl1.ClientSize.Width);
                     }
                     else if (sep == Tab.ViewSeparator.Both)
                     {
-                        SetViewportSplitV(1.0f - e.Y / (float)glControl1.ClientSize.Height);
-                        SetViewportSplitH(e.X / (float)glControl1.ClientSize.Width);
+                        SetViewportSplitV(1.0f - e.Y / (float)renderControl1.ClientSize.Height);
+                        SetViewportSplitH(e.X / (float)renderControl1.ClientSize.Width);
                     }
                     else
                     {
@@ -305,7 +338,7 @@ namespace open3mod
             }
             var view = UiState.ActiveTab.ActiveViews[(int)index];
             Debug.Assert(view != null);
-            _renderer.OnMouseMove(e, view.Bounds, index);
+            if (_renderer != null) _renderer.OnMouseMove(e, view.Bounds, index);
 
             if (!_mouseDown && !_mouseRightDown)
             {
@@ -382,40 +415,135 @@ namespace open3mod
 
         partial void OnKeyDown(object sender, KeyEventArgs e)
         {
+            int index = tabControl1.SelectedIndex;
             switch (e.KeyData)
             {
+                case Keys.PageUp:
+                case Keys.Left:
+                    index--;
+                    if (index == -1) index = tabControl1.TabPages.Count-1;
+                    SelectTab(tabControl1.TabPages[index]);
+                    break;
+
+                case Keys.Next:
+                case Keys.Right:
+                    index++;
+                    if (index == tabControl1.TabPages.Count) index = 0;
+                    SelectTab(tabControl1.TabPages[index]);
+                    break;
+
+                case Keys.F5:
+                case Keys.Escape:
+                    UiForTab(_ui.ActiveTab).GetInspector().Animations.OnPlay(sender, e);
+                    break;
+
+                case Keys.OemPeriod:
+                    UiForTab(_ui.ActiveTab).GetInspector().Animations.SetTime(0);
+                    break;
+
                 case Keys.W:
-                case Keys.Up:
                     _forwardPressed = true;
                     break;
 
                 case Keys.A:
-                case Keys.Left:
                     _leftPressed = true;
                     break;
 
                 case Keys.S:
-                case Keys.Down:
                     _backPressed = true;
                     break;
 
                 case Keys.D:
-                case Keys.Right:
                     _rightPressed = true;
                     break;
 
-                case Keys.PageUp:
+                case Keys.Up:
                     _upPressed = true;
                     break;
 
-                case Keys.PageDown:
+                case Keys.Down:
                     _downPressed = true;
                     break;
 
+                case Keys.NumPad9:
+                    _fovyUpPressed = true;
+                    break;
+
+                case Keys.NumPad3:
+                    _fovyDownPressed = true;
+                    break;
+
+                case Keys.NumPad4:
+                case Keys.NumPad5:
+                case Keys.NumPad6:
+                    _shiftPressed = true;
+                    break;
+
                 case Keys.R:
-                    // reset camera immediately
+                    // reset camera immediatelly
                     UiState.ActiveTab.ResetActiveCameraController();
                     break;
+
+                case Keys.O:
+                    //reset offset
+                    OpenVRInterface.viewOffset = Matrix4.Identity;
+                    break;
+
+                case Keys.Subtract:
+                    timeOffset = timeOffset + 5; ;
+                    if (timeOffset >= mainTiming) timeOffset = 0;
+                    break;
+
+                case Keys.Add:
+                    timeOffset = timeOffset - 5;
+                    if (timeOffset < 0) timeOffset = mainTiming - 5;
+                    break;
+
+                case Keys.E:
+                    // switch backend
+                    if (_settings == null || _settings.IsDisposed) _settings = new SettingsDialog { Main = this };
+                    _settings.ChangeRenderingBackend();
+                    break;
+                case Keys.V:
+                    // reset NDI streams
+                    if (useIO) _renderer.FlushNDI();
+                    break;
+                case Keys.T:
+                    // skips one frame
+                    _renderer.skipFrames = 1;
+                    break;
+                case Keys.B:
+                    if (useIO) UiState.ActiveTab.ActiveCameraController.SetScenePartMode(ScenePartMode.Background);
+                    break;
+                case Keys.F:
+                    if (useIO) UiState.ActiveTab.ActiveCameraController.SetScenePartMode(ScenePartMode.Foreground);
+                    break;
+                case Keys.X:
+                    if (useIO) UiState.ActiveTab.ActiveCameraController.SetScenePartMode(ScenePartMode.Others);
+                    break;
+                case Keys.C:
+                    if (useIO) UiState.ActiveTab.ActiveCameraController.SetScenePartMode(ScenePartMode.Camera);
+                    break;
+                case Keys.L:
+                    UiState.ActiveTab.ActiveCameraController.SetScenePartMode(ScenePartMode.All);
+                    break;
+                case Keys.J:
+                    if (useIO) UiState.ActiveTab.ActiveCameraController.SetScenePartMode(ScenePartMode.CameraCancelColor);
+                    break;
+                case Keys.M:
+                    if (useIO) UiState.ActiveTab.ActiveCameraController.SetScenePartMode(ScenePartMode.Composite);
+                    break;
+                case Keys.K:
+                    if (useIO) UiState.ActiveTab.ActiveCameraController.SetScenePartMode(ScenePartMode.Keying);
+                    break;
+                case Keys.G:
+                    if (useIO) UiState.ActiveTab.ActiveCameraController.SetScenePartMode(ScenePartMode.GreenScreen);
+                    break;
+
+                case Keys.Enter:
+                    _renderer.activeCamera = 3-_renderer.activeCamera;
+                    break;
+
             }
         }
 
@@ -451,6 +579,22 @@ namespace open3mod
                 case Keys.PageDown:
                     _downPressed = false;
                     break;
+
+                case Keys.NumPad9:
+                    _fovyUpPressed = false;
+                    break;
+
+                case Keys.NumPad3:
+                    _fovyDownPressed = false;
+                    break;
+
+                case Keys.NumPad4:
+                case Keys.NumPad5:
+                case Keys.NumPad6:
+                    _shiftPressed = false;
+                    break;
+
+
             }
         }
     }

@@ -21,6 +21,7 @@
 using System;
 using System.Diagnostics;
 using Assimp;
+using OpenTK;
 
 namespace open3mod
 {
@@ -127,12 +128,14 @@ namespace open3mod
         ///    TODO tangents, bitangents?
         /// </param>
         /// <param name="mat">Material to be applied, must be non-null</param>
-        public abstract void ApplyMaterial(Mesh mesh, Material mat, bool textured, bool shaded);
-        public abstract void ApplyGhostMaterial(Mesh mesh, Material material, bool shaded);
+        public abstract void ApplyMaterial(Mesh mesh, Material mat, bool textured, bool shaded, bool twoSided);
+        public abstract void ApplyGhostMaterial(Mesh mesh, Material material, bool shaded, bool twoSided);
 
-        public abstract void BeginScene(Renderer renderer);
+        public abstract void BeginScene(Renderer renderer, bool useSceneLights);
         public abstract void EndScene(Renderer renderer);
-      
+
+        public abstract void SetMatrices(Matrix4 world, Matrix4 view, Matrix4 perspective);
+        public abstract void SetWorld(Matrix4 world);
 
         /// <summary>
         /// Uploads all the textures required for a given material to VRAM (i.e.
@@ -142,6 +145,35 @@ namespace open3mod
         /// <param name="material"></param>
         /// <returns>Whether there were any new texture uploads</returns>
         public bool UploadTextures(Material material)
+        {
+            Debug.Assert(material != null);
+            // note: keep this up to date with the code in MaterialMapperBOTH_GL.Apply(Fixed)FunctionMaterial
+            var any = false;
+            for (int i = 0; i < Renderer.usedModernGLTextureTypeCount; i++)
+            {
+                TextureType currTextureType = (TextureType)((int)TextureType.Diffuse + i);
+                if (material.GetMaterialTextureCount(currTextureType) > 0)
+                {
+                    TextureSlot tex;
+                    material.GetMaterialTexture(currTextureType, 0, out tex);
+
+                    var gtex = _scene.TextureSet.GetOriginalOrReplacement(tex.FilePath);
+
+                    if (gtex.State == Texture.TextureState.WinFormsImageCreated)
+                    {
+                        gtex.Upload();
+                        any = true;
+                    }
+                    else if (gtex.ReconfigureUploadedTextureRequested)
+                    {
+                        gtex.ReconfigureUploadedTexture();
+                    }
+                }
+            }
+            return any;
+        }
+
+        public bool UploadDynamicTextures(Material material)
         {
             Debug.Assert(material != null);
             var any = false;
@@ -154,9 +186,9 @@ namespace open3mod
 
                 var gtex = _scene.TextureSet.GetOriginalOrReplacement(tex.FilePath);
 
-                if (gtex.State == Texture.TextureState.WinFormsImageCreated)
+                if ((gtex.State == Texture.TextureState.WinFormsImageCreated) && gtex.Dynamic)
                 {
-                    gtex.Upload();
+                    gtex.Upload(); 
                     any = true;
                 }
                 else if (gtex.ReconfigureUploadedTextureRequested)
@@ -166,7 +198,48 @@ namespace open3mod
             }
             return any;
         }
+
+        public int LightCount()
+        {
+            return _scene.Raw.LightCount;
+        }
+
+        public Light[] GenerateLights()
+        {
+            Light[] Lights = new Light[_scene.Raw.LightCount];
+            for (var j = 0; j < _scene.Raw.LightCount; ++j)
+            {
+                Lights[j] = _scene.Raw.Lights[j];
+            }
+            return Lights;
+        }
+
+        public Node[] GenerateLightNodes()
+        {
+            Node[] _LightNodes = new Node[_scene.Raw.LightCount];
+            FindLightNodes(_scene.Raw.RootNode, ref _LightNodes);
+            return _LightNodes;
+        }
+
+        public void FindLightNodes(Node node, ref Node[] _LightNodes)
+        {
+            for (var i = 0; i < _scene.Raw.LightCount; ++i)
+            {
+                if (_scene.Raw.Lights[i].Name == node.Name)
+                {
+                    _LightNodes[i] = node;
+                    break;
+                }
+                if (node.Children != null)
+                {
+                    foreach (var c in node.Children)
+                    {
+                        FindLightNodes(c, ref _LightNodes);
+                    }
+                }
+            }
+        }
     }
 }
 
-/* vi: set shiftwidth=4 tabstop=4: */ 
+/* vi: set shiftwidth=4 tabstop=4: */
