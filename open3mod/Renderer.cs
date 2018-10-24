@@ -230,8 +230,7 @@ namespace open3mod
         ///    needs to be fired already.</param>
         internal Renderer(MainWindow mainWindow)
         {
-            renderIO = MainWindow.useIO;
-            //renderIO = true;
+            renderIO = MainWindow.useIO || renderIO;
             _mainWindow = mainWindow;
             _rendererContext = (GraphicsContext)GraphicsContext.CurrentContext;
             LoadHudImages();
@@ -623,9 +622,9 @@ namespace open3mod
 
                     GL.BindTexture(TextureTarget.Texture2D, _canvasTexture);
                     GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, _canvasTexture, 0);
-                    renderControl.CopyVideoFramebuffers(2, 4);//from MS to SS
+                    renderControl.CopyVideoFramebuffers(1, 2);//from MS to SS
                   //  renderControl.BindBuffers((4 + (int)GraphicsSettings.Default.RenderingBackend), 2);
-                    renderControl.BindBuffers(4, 2);
+                    renderControl.BindBuffers();
 
                     //render frgd to FBO #2, move to SS#3 and move to texture
                     _cameraController[activeCamera].SetScenePartMode(ScenePartMode.Foreground);
@@ -634,11 +633,11 @@ namespace open3mod
                 renderControl.SetRenderTarget(RenderControl.RenderTarget.VideoSSCompat);
                 GL.BindTexture(TextureTarget.Texture2D, _foregroundTexture);
                 GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, _foregroundTexture, 0);
-                renderControl.CopyVideoFramebuffers(2, 4);//from MS to SS
+                renderControl.CopyVideoFramebuffers(1, 2);//from MS to SS
 
                 //Bitmap testBmp = renderControl.ReadTextureTest();
                 // testBmp.Dispose();
-                renderControl.BindBuffers(4, 2);
+                renderControl.BindBuffers();
                 timeTrack("14 - FGFin");
 
 
@@ -648,7 +647,7 @@ namespace open3mod
                 DrawVideoViewport(_cameraController[activeCamera], activeTab, Tab.ViewIndex.Index2);
                 RenderControl.GLError("BgStart");
                 renderControl.SetRenderTarget(RenderControl.RenderTarget.VideoSSCompat);
-                renderControl.CopyVideoFramebuffers(2, 4);//from MS to SS
+                renderControl.CopyVideoFramebuffers(1, 2);//from MS to SS
                 renderControl.SetRenderTarget(RenderControl.RenderTarget.VideoSSCore);
 
                     RenderControl.GLError("SwitchToCore1");
@@ -741,12 +740,12 @@ namespace open3mod
                 }
 
                     renderControl.SetRenderTarget(RenderControl.RenderTarget.VideoSSCore);
-                    renderControl.CopyVideoFramebuffers(5, 3);
+                    renderControl.CopyVideoFramebuffers(2, 1);
                 renderControl.SetRenderTarget(RenderControl.RenderTarget.VideoSSCore);
                 GL.BindTexture(TextureTarget.Texture2D, _compositeTexture);
                 GL.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, TextureTarget.Texture2D, _compositeTexture, 0);
-                renderControl.CopyVideoFramebuffers(3, 5);
-                renderControl.BindBuffers(5, 2);
+                renderControl.CopyVideoFramebuffers(1, 2);
+                renderControl.BindBuffers();
 
                 timeTrack("16 - Composite reread");
 

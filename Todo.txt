@@ -1,69 +1,30 @@
-off  shader composite
-
-show fps/info overlay. switch info hned on/off (render prázdný text)
-
-sample hodnoty plátna pro klíè??
-spustit ve studiu - zkontrolovat chromakey shader
 jak vypadá Janssen nové studio v renderu
+spustit ve studiu - zkontrolovat chromakey shader
 
+framebuffers allocation+structure
 
+støih do druhé kamery buttonem ovladaèe
+zpoždìní nastavit až s klikem, ne jen držením nad
 
+test - nastavení FOV pro kameru+screen adekvátnì-testovací studio vs reál pøedmìt(?)
 
-Original idea was to use VR controllers as cameracontrollers,
-for each of two VR controllers use two windows as foreground+background renderpair,
-and send them via 4 NDI streams capable of alpha channel
-to vMix videomixer and mix them with live camera image.
+load fps+video output sizes z inputu BMD / scalable
+destroy všech kontextù
+??assimp411-compile - vymìnit dllky?Loadblender??
+show fps/info overlay. switch info hned on/off (render prázdný text)
+sample hodnoty plátna pro klíè??
 
-I managed this to work,
-but NDI timing problems ruined this scenario.
-Both NDI and vMix did not gave me enough control over timing,
-so final image was not reliably time-stable.
-
-Next solution was to handle mixing internally,
-but this required BlackmagicDesign IN+OUT
-+ shaders on GPU to perform color keying.
-Developing shaders showed, that
-on my AMD hardware (and Intel too)
-compatibility mode simply did not work with core commands.
-This lead to using of more contexts, one compatible and one core
-and developing separate GL4.5 features.
-
-
-- Matrix are somehow transposed.
-Yes, all of them.
-As A*B = BTransposed*ATransposed,
-you probably transposed one on the beginning,
-an all rest of the code as 
-1/ matrixes transposed
-2/ multiplying order of matrixes switched
-
-
-
-Saving / loading opened models list
-VR interface+models
-BMD in/out
-NDI in/out
-Fifth window (originally full screen) as scene overview.
 
 
 mìøení rozdílu cam 1a 2 - úprava zpoždìní scanu pøi pøestøihu(!!), 
 sync druhá kamera - poèítání frame kamery#1, k tomu kdy dorazil frame2, v rendereru kontrola stejného èísla+operace, co když ne, 
 
-støih do druhé kamery buttonem ovladaèe
 
-
-zpoždìní nastavit až s klikem, ne jen držením nad
-
-nastavení FOV pro kameru+screen adekvátnì-testovací studio vs reál pøedmìt(?)
 
 
 Textury v Blenderu musí mít UV, tj až po Unwrappingu - jinak UV nemají
 
-destroy všech kontextù
 
-??assimp411-compile - vymìnit dllky?
-
-load output sizes z inputu BMD?? scalable? input jiný než output???
 
 
 NDI/BMD výstupy cam1,cam2, static pro 3cam, rezerva?? nebo bez NDI?

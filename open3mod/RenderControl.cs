@@ -54,9 +54,7 @@ namespace open3mod
         static int numBuffers = 3;
         int[] renderBuffer = new int[numBuffers];
         int[] depthBuffer = new int[numBuffers];
-        int[] frameBuffer = new int[numBuffers * 2];
-        int[] frameBufferCore = new int[numBuffers];
-        int[] frameBufferCompat = new int[numBuffers];
+        int[,] frameBuffer = new int[2,numBuffers];
         int[] pixelPackBuffer = new int[numBuffers];
         int[] pixelUnpackBuffer = new int[numBuffers];
         public bool initialized = false;
@@ -64,7 +62,7 @@ namespace open3mod
         public const byte bytePerPixel = 4;
         GLControl glCore;
         int samples = 1; //1 no MSAA, 8 max
-
+        int isCore = 0;//0 = compat,1= core;
 
         public RenderControl()
             : base(new GraphicsMode(new ColorFormat(32), 24, 8, GetSampleCount(GraphicsSettings.Default.MultiSampling)))
@@ -95,17 +93,20 @@ namespace open3mod
         /// Binds Renderbuffers to Framebuffer.
         /// </summary>
         /// <returns></returns>
-        public void BindBuffers(int frameIndex, int renderIndex)
+        public void BindBuffers()
         {
-            GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, frameBuffer[frameIndex]);
-            GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, frameBuffer[frameIndex]);
-            GL.BindFramebuffer(FramebufferTarget.Framebuffer, frameBuffer[frameIndex]);
-            GL.FramebufferRenderbuffer(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, RenderbufferTarget.Renderbuffer, renderBuffer[renderIndex]);
-            GL.FramebufferRenderbuffer(FramebufferTarget.Framebuffer, FramebufferAttachment.DepthStencilAttachment, RenderbufferTarget.Renderbuffer, depthBuffer[renderIndex]);
-            FramebufferErrorCode status = GL.CheckFramebufferStatus(FramebufferTarget.Framebuffer);
-            if (status != FramebufferErrorCode.FramebufferComplete)
+            for (int i = 0; i < numBuffers; i++)
             {
-                Console.WriteLine("Error creating framebuffer: {0}", status);
+                GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, frameBuffer[isCore, i]);
+                GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, frameBuffer[isCore, i]);
+                GL.BindFramebuffer(FramebufferTarget.Framebuffer, frameBuffer[isCore, i]);
+                GL.FramebufferRenderbuffer(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, RenderbufferTarget.Renderbuffer, renderBuffer[i]);
+                GL.FramebufferRenderbuffer(FramebufferTarget.Framebuffer, FramebufferAttachment.DepthStencilAttachment, RenderbufferTarget.Renderbuffer, depthBuffer[i]);
+                FramebufferErrorCode status = GL.CheckFramebufferStatus(FramebufferTarget.Framebuffer);
+                if (status != FramebufferErrorCode.FramebufferComplete)
+                {
+                    Console.WriteLine("Error creating framebuffer: {0}", status);
+                }
             }
         }
 
@@ -115,7 +116,7 @@ namespace open3mod
         /// <returns></returns>
         public void InitGlControl(int videoSizeX, int videoSizeY)
         {
-            ErrorCode err = GL.GetError();//nVidia does not lie something at real beginning
+            ErrorCode err = GL.GetError();//nVidia does not like something at real beginning
             RenderControl.GLError("InitializeGLControl");
 
             _videoSize.Width = videoSizeX;
@@ -144,13 +145,13 @@ namespace open3mod
 
             this.MakeCurrent();
             VSync = false;
+            isCore = 0;
+            int[] frameBufferCompat = new int[numBuffers];
             GL.GenFramebuffers(numBuffers, frameBufferCompat);
-            frameBuffer[0] = frameBufferCompat[0];
-            frameBuffer[2] = frameBufferCompat[1];
-            frameBuffer[4] = frameBufferCompat[2];
-            BindBuffers(0, 0);
-            BindBuffers(2, 1);
-            BindBuffers(4, 2);
+            frameBuffer[isCore,0] = frameBufferCompat[0];
+            frameBuffer[isCore, 1] = frameBufferCompat[1];
+            frameBuffer[isCore, 2] = frameBufferCompat[2];
+            BindBuffers();
             GL.BindBuffer(BufferTarget.PixelPackBuffer, pixelPackBuffer[0]);
             GL.BufferData(BufferTarget.PixelPackBuffer, (IntPtr)(Width * Height * bytePerPixel), (IntPtr)0, BufferUsageHint.DynamicCopy);
             GL.BindBuffer(BufferTarget.PixelPackBuffer, 0);
@@ -159,14 +160,14 @@ namespace open3mod
             GL.BindBuffer(BufferTarget.PixelUnpackBuffer, 0);
 
             glCore.MakeCurrent();
-            GL.GenFramebuffers(numBuffers, frameBufferCore);
-            frameBuffer[1] = frameBufferCore[0];
-            frameBuffer[3] = frameBufferCore[1];
-            frameBuffer[5] = frameBufferCore[2];
             glCore.VSync = false;
-            BindBuffers(1, 0);
-            BindBuffers(3, 1);
-            BindBuffers(5, 2);
+            isCore = 1;
+            int[] frameBufferCore = new int[numBuffers];
+            GL.GenFramebuffers(numBuffers, frameBufferCore);
+            frameBuffer[isCore, 0] = frameBufferCore[0];
+            frameBuffer[isCore, 1] = frameBufferCore[1];
+            frameBuffer[isCore, 2] = frameBufferCore[2];
+            BindBuffers();
             GL.BindBuffer(BufferTarget.PixelPackBuffer, pixelPackBuffer[1]);
             GL.BufferData(BufferTarget.PixelPackBuffer, (IntPtr)(videoSizeX * videoSizeY * bytePerPixel), (IntPtr)0, BufferUsageHint.DynamicRead);
             GL.BindBuffer(BufferTarget.PixelPackBuffer, 0);
@@ -225,39 +226,45 @@ namespace open3mod
             {
                 case RenderTarget.ScreenDirect:
                     this.MakeCurrent();
-                 //   GL.Viewport(Left, Top, Width, Height);
+                    //   GL.Viewport(Left, Top, Width, Height);
+                    isCore = 0;
                     GL.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
                     break;
                 case RenderTarget.ScreenCompat:
                     this.MakeCurrent();
-                    RenderControl.GLError("AfterMakeCurrent");
                     //   GL.Viewport(Left, Top, Width, Height);
-                    GL.BindFramebuffer(FramebufferTarget.Framebuffer, frameBuffer[0]);
+                    isCore = 0;
+                    GL.BindFramebuffer(FramebufferTarget.Framebuffer, frameBuffer[isCore,0]);
                     break;
                 case RenderTarget.ScreenCore:
                     glCore.MakeCurrent();
-                //    GL.Viewport(Left, Top, Width, Height);
-                    GL.BindFramebuffer(FramebufferTarget.Framebuffer, frameBuffer[1]);
+                    //    GL.Viewport(Left, Top, Width, Height);
+                    isCore = 1;
+                    GL.BindFramebuffer(FramebufferTarget.Framebuffer, frameBuffer[isCore,0]);
                     break;
                 case RenderTarget.VideoCompat:
                     this.MakeCurrent();
                     GL.Viewport(0, 0, _videoSize.Width, _videoSize.Height);
-                    GL.BindFramebuffer(FramebufferTarget.Framebuffer, frameBuffer[2]);
+                    isCore = 0;
+                    GL.BindFramebuffer(FramebufferTarget.Framebuffer, frameBuffer[isCore,1]);
                     break;
                 case RenderTarget.VideoCore:
                     glCore.MakeCurrent();
                     GL.Viewport(0, 0, _videoSize.Width, _videoSize.Height);
-                    GL.BindFramebuffer(FramebufferTarget.Framebuffer, frameBuffer[3]);
+                    isCore = 1;
+                    GL.BindFramebuffer(FramebufferTarget.Framebuffer, frameBuffer[isCore,1]);
                     break;
                 case RenderTarget.VideoSSCompat:
                     this.MakeCurrent();
                     GL.Viewport(0, 0, _videoSize.Width, _videoSize.Height);
-                    GL.BindFramebuffer(FramebufferTarget.Framebuffer, frameBuffer[4]);
+                    isCore = 0;
+                    GL.BindFramebuffer(FramebufferTarget.Framebuffer, frameBuffer[isCore,2]);
                     break;
                 case RenderTarget.VideoSSCore:
                     glCore.MakeCurrent();
+                    isCore = 1;
                     GL.Viewport(0, 0, _videoSize.Width, _videoSize.Height);
-                    GL.BindFramebuffer(FramebufferTarget.Framebuffer, frameBuffer[5]);
+                    GL.BindFramebuffer(FramebufferTarget.Framebuffer, frameBuffer[isCore,2]);
                     break;
             }
             RenderControl.GLError("AfterTargetChange");
@@ -271,12 +278,10 @@ namespace open3mod
         {
             if ((Width != 0) && (Height != 0))
             {
-                GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, frameBuffer[0]);
+                GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, frameBuffer[isCore,0]);
                 GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, 0);
                 GL.DrawBuffer(DrawBufferMode.Back);
                 GL.BlitFramebuffer(Left, Top, Width, Height, Left, Top, Width, Height, ClearBufferMask.ColorBufferBit, BlitFramebufferFilter.Nearest);
-                RenderControl.GLError("BLIT-toSC");
-
             }
         }
 
@@ -286,24 +291,13 @@ namespace open3mod
         /// <returns></returns>
         public void CopyVideoToScreenFramebuffer(int Left, int Bottom, int Right, int Top)
         {
-            RenderControl.GLError("BeforeCopy");
-          /*  int smps;
-            for (int i = 0; i<7; i++) 
-            {
-                SetRenderTarget((RenderTarget)i);
-                smps = GL.GetInteger(GetPName.SampleBuffers);
-            }
-            */
-            GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, frameBuffer[4]);
-            GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, frameBuffer[2]);
+            GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, frameBuffer[isCore,2]);
+            GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, frameBuffer[isCore,1]);
             GL.BlitFramebuffer(0, 0, _videoSize.Width - 1, _videoSize.Height - 1, 0, 0, _videoSize.Width - 1, _videoSize.Height - 1, ClearBufferMask.ColorBufferBit, BlitFramebufferFilter.Linear);
-            RenderControl.GLError("After 4 to 2");
-            GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, frameBuffer[2]);
+            GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, frameBuffer[isCore, 1]);
             GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, 0);
             GL.BlitFramebuffer(0, 0, _videoSize.Width - 1, _videoSize.Height - 1, 0, 0, _videoSize.Width - 1, _videoSize.Height - 1, ClearBufferMask.ColorBufferBit, BlitFramebufferFilter.Linear);
-            RenderControl.GLError("After 2 to 0");
             GL.BlitFramebuffer(0, 0, _videoSize.Width-1,_videoSize.Height-1, Left, Bottom, Right, Top, ClearBufferMask.ColorBufferBit, BlitFramebufferFilter.Linear);
-            RenderControl.GLError("After");
         }
 
         /// <summary>
@@ -312,21 +306,16 @@ namespace open3mod
         /// <returns></returns>
         public void CopyVideoFramebuffers(int src, int dest)
         {
-            GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, frameBuffer[src]);
-            RenderControl.GLError("BLIT-Copy1");
-            GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, frameBuffer[dest]);
-            RenderControl.GLError("BLIT-Copy2");
+            GL.BindFramebuffer(FramebufferTarget.ReadFramebuffer, frameBuffer[isCore, src]);
+            GL.BindFramebuffer(FramebufferTarget.DrawFramebuffer, frameBuffer[isCore, dest]);
             GL.DrawBuffer(DrawBufferMode.ColorAttachment0);
-            RenderControl.GLError("BLIT-Copy3");
             GL.BlitFramebuffer(0, 0, _videoSize.Width - 1, _videoSize.Height - 1, 0, 0, _videoSize.Width - 1, _videoSize.Height - 1, ClearBufferMask.ColorBufferBit, BlitFramebufferFilter.Linear);
-            RenderControl.GLError("BLIT-Copy");
-
         }
 
         public Bitmap ReadFramebufferTest()
         {
             Size bmpSize = new Size(Width, Height); ;
-            if ((GL.IsFramebuffer(frameBuffer[2]))|| (GL.IsFramebuffer(frameBuffer[3]))) bmpSize = _videoSize;
+            if (GL.IsFramebuffer(frameBuffer[isCore, 1])) bmpSize = _videoSize;
             if ((bmpSize.Height <= 0) || (bmpSize.Width <= 0)) return null;
             Bitmap testBmp = new Bitmap(bmpSize.Width,bmpSize.Height);
             //Graphics gr = Graphics.FromImage(testBmp);
@@ -372,7 +361,6 @@ namespace open3mod
                 Normal
                 Maximum
             */
-            //            int multiSampling = GraphicsSettings.Default.MultiSampling;
             //int multiSampling = 2;
             switch (multiSampling)
             {
@@ -407,7 +395,7 @@ namespace open3mod
                     highest = mode.Samples;
                 }
                 aa += 2;
-            } while (aa <= 8);//32 too much. looks GM tells always OK, but framebuffer cannnot be created then
+            } while (aa <= 8);//32 too much. looks GL tells always OK, but framebuffer cannnot be created then
             return highest;
         }
 
@@ -417,7 +405,15 @@ namespace open3mod
         /// <returns></returns>
         public void Exit()
         {
-            GL.DeleteFramebuffers(numBuffers * 2, frameBuffer);
+            int[] frameBufferDel0 = new int[numBuffers];
+            int[] frameBufferDel1 = new int[numBuffers];
+            for (int i = 0; i < numBuffers; i++)
+            {
+                frameBufferDel0[i] = frameBuffer[0, i];
+                frameBufferDel1[i] = frameBuffer[1, i];
+            }
+            GL.DeleteFramebuffers(1, frameBufferDel0);
+            GL.DeleteFramebuffers(1, frameBufferDel1);
             GL.DeleteRenderbuffers(numBuffers, renderBuffer);
             GL.DeleteRenderbuffers(numBuffers, depthBuffer);
             GL.DeleteBuffers(numBuffers, pixelPackBuffer);
@@ -443,26 +439,6 @@ namespace open3mod
             ErrorCode err = GL.GetError();
             if (err != ErrorCode.NoError) Console.WriteLine("Error reported at " + where + ":  " + err.ToString());
         }
-
-        private static void EnsureTemporaryResourcesReleased(int depthRenderbuffer, int fboHandle)
-        {
-            try
-            {
-              //  if (colorTexture != -1)   GL.DeleteTexture(colorTexture);
-                if (depthRenderbuffer != -1)
-                {
-                    GL.Ext.DeleteRenderbuffers(1, ref depthRenderbuffer);
-                }
-                if (fboHandle != -1)
-                {
-                    GL.DeleteFramebuffers(1, ref fboHandle);
-                }
-            }
-            catch (Exception)
-            {
-            }
-        }
-
     }
 }
 
