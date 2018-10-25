@@ -99,16 +99,16 @@ vec4 bilinear(vec4 W, vec4 X, vec4 Y, vec4 Z, vec2 weight)
 }
 
 		// Gather neighboring YUV macropixels from the given texture coordinate
-void textureGatherYUV(sampler2D YUYVsampler, vec2 tc, out vec4 W, out vec4 X, out vec4 Y, out vec4 Z) 
+void textureGatherYUV(sampler2D YUYVsampler, ivec2 tx, out vec4 W, out vec4 X, out vec4 Y, out vec4 Z) 
 {
-    ivec2 tx = ivec2(tc);
-	ivec2 iYUYVTextureResolution = textureSize(YUYVsampler, 0);
+    ivec2 iYUYVTextureResolution = ivec2(iTextureResolution.x/2,iTextureResolution.y);
 	ivec2 tmin = ivec2(0,0);
 	ivec2 tmax = iYUYVTextureResolution - ivec2(1,1);
-	W = texelFetch(YUYVsampler, clamp(tx + ivec2(0,0), tmin, tmax), 0); 
-	X = texelFetch(YUYVsampler, clamp(tx + ivec2(0,1), tmin, tmax), 0);
-	Y = texelFetch(YUYVsampler, clamp(tx + ivec2(1,1), tmin, tmax), 0);
-	Z = texelFetch(YUYVsampler, clamp(tx + ivec2(1,0), tmin, tmax), 0); 
+	iYUYVTextureResolution.x = iYUYVTextureResolution.x*2;
+	W = texelFetch(YUYVsampler, tx/iYUYVTextureResolution, 0); 
+	X = texelFetch(YUYVsampler, clamp(tx + ivec2(0,1), tmin, tmax)/iYUYVTextureResolution, 0); 
+	Y = texelFetch(YUYVsampler, clamp(tx + ivec2(1,1), tmin, tmax)/iYUYVTextureResolution, 0); 
+	Z = texelFetch(YUYVsampler, clamp(tx + ivec2(1,0), tmin, tmax)/iYUYVTextureResolution, 0); 
 }
 
 vec3 rgb2hsv(vec3 rgb)
@@ -151,20 +151,18 @@ vec3 changeSaturation(vec3 color, float saturation)
 	return mix(vec3(luma), color, saturation);
 }
 
-
-
 void main(void)
 {
 	vec2 scale = iViewportSize / iTextureResolution;
 	vec2 uv = gl_FragCoord.xy / iTextureResolution.xy;
-	//scale, straight, values 0 - iTextureResolution
-	ivec2 texPos  = ivec2((gl_FragCoord.x - 0.5-iViewportStart.x)/scale.x, (gl_FragCoord.y - 0.5-iViewportStart.y)/scale.y); //texture input, halfpixels
-	//noscale, upside down
-    ivec2 texPos2 = ivec2((gl_FragCoord.x - 0.5),  iTextureResolution.y-1-(gl_FragCoord.y - 0.5));
+	ivec2 texPos = ivec2((gl_FragCoord.x - 0.5-iViewportStart.x)/scale.x, (gl_FragCoord.y - 0.5-iViewportStart.y)/scale.y); //texture input, halfpixels
 
-    vec2 tc = vec2((gl_FragCoord.x - 0.5)-iViewportStart.x,              iViewportStart.y+iViewportSize.y-(gl_FragCoord.y - 0.5)); 
-    tc.x=tc.x/2;
-	tc = tc/scale;
+    vec2 texPos2 = vec2((gl_FragCoord.x - 0.5),  iTextureResolution.y-1-(gl_FragCoord.y - 0.5));
+    vec2 tc = vec2((gl_FragCoord.x - 0.5)-iViewportStart.x,  iViewportStart.y+iViewportSize.y-(gl_FragCoord.y - 0.5)); 
+
+    ivec2 jYUYVTextureResolution = ivec2(iTextureResolution.x/2,iTextureResolution.y);
+    ivec2 tx = ivec2(tc * jYUYVTextureResolution/scale);
+
 	float alpha = 1; 
 
 //	if (tx.y<iViewportSize.y) alpha = 0.0;
@@ -172,40 +170,32 @@ void main(void)
 	vec4 macro, macro_u, macro_r, macro_ur;
 	vec4 pixel, pixel_r, pixel_u, pixel_ur; 
 
-	textureGatherYUV(iYUYVtex, tc, macro, macro_u, macro_ur, macro_r);
-	vec2 off = fract(tc); 
-	//off = vec2(0,0); 
-
+	textureGatherYUV(iYUYVtex, tx, macro, macro_u, macro_ur, macro_r);
+	vec2 off = fract(tc * textureSize(iYUYVtex, 0)); 
 	if (off.x > 0.5) { 			// right half of macropixel
-		pixel    = rec709YCbCr2rgba(macro.a, (macro.b + macro_r.b)/2, (macro.r+macro_r.r)/2, alpha) ; 
-		pixel_r  = rec709YCbCr2rgba(macro_r.g, macro_r.b, macro_r.r, alpha); 
-		pixel_u  = rec709YCbCr2rgba(macro_u.a, (macro_u.b + macro_ur.b)/2, (macro_u.r+macro_ur.r)/2, alpha) ; 
+		pixel = rec709YCbCr2rgba(macro.a, macro.b, macro.r, alpha); 
+		pixel_r = rec709YCbCr2rgba(macro_r.g, macro_r.b, macro_r.r, alpha); 
+		pixel_u = rec709YCbCr2rgba(macro_u.a, macro_u.b, macro_u.r, alpha); 
 		pixel_ur = rec709YCbCr2rgba(macro_ur.g, macro_ur.b, macro_ur.r, alpha); 
 	} else { 					// left half & center of macropixel
 		pixel = rec709YCbCr2rgba(macro.g, macro.b, macro.r, alpha); 
-		pixel_r = rec709YCbCr2rgba(macro.a, (macro.b+macro_r.b)/2, (macro.r+macro_r.r)/2, alpha); 
+		pixel_r = rec709YCbCr2rgba(macro.a, macro.b, macro.r, alpha); 
 		pixel_u = rec709YCbCr2rgba(macro_u.g, macro_u.b, macro_u.r, alpha); 
-		pixel_ur = rec709YCbCr2rgba(macro_u.a, (macro_u.b+macro_ur.b)/2, (macro_u.r+macro_ur.r)/2, alpha); 
+		pixel_ur = rec709YCbCr2rgba(macro_u.a, macro_u.b, macro_u.r, alpha); 
 	}
 	vec4 camera = bilinear(pixel, pixel_u, pixel_ur, pixel_r, off);
-	//since weighting somehow does not work properly (rounding errors?pixel centers?)
-	if ((iTextureResolution.x == iViewportSize.x)&&(iTextureResolution.y == iViewportSize.y)) camera = pixel;
 
-//	if (texPos.y < 150)  camera =  macro;
-//	if (texPos.y < 100)  camera =  pixel;
-//	if (texPos.y < 50)  camera =  pixel_r;
-
-	textureGatherYUV(iYUYVtex2, tc, macro, macro_u, macro_ur, macro_r);
+	textureGatherYUV(iYUYVtex2, tx, macro, macro_u, macro_ur, macro_r);
 	if (off.x > 0.5) { 			// right half of macropixel
-		pixel    = rec709YCbCr2rgba(macro.a, (macro.b + macro_r.b)/2, (macro.r+macro_r.r)/2, alpha) ; 
-		pixel_r  = rec709YCbCr2rgba(macro_r.g, macro_r.b, macro_r.r, alpha); 
-		pixel_u  = rec709YCbCr2rgba(macro_u.a, (macro_u.b + macro_ur.b)/2, (macro_u.r+macro_ur.r)/2, alpha) ; 
+		pixel = rec709YCbCr2rgba(macro.a, macro.b, macro.r, alpha); 
+		pixel_r = rec709YCbCr2rgba(macro_r.g, macro_r.b, macro_r.r, alpha); 
+		pixel_u = rec709YCbCr2rgba(macro_u.a, macro_u.b, macro_u.r, alpha); 
 		pixel_ur = rec709YCbCr2rgba(macro_ur.g, macro_ur.b, macro_ur.r, alpha); 
 	} else { 					// left half & center of macropixel
 		pixel = rec709YCbCr2rgba(macro.g, macro.b, macro.r, alpha); 
-		pixel_r = rec709YCbCr2rgba(macro.a, (macro.b+macro_r.b)/2, (macro.r+macro_r.r)/2, alpha); 
+		pixel_r = rec709YCbCr2rgba(macro.a, macro.b, macro.r, alpha); 
 		pixel_u = rec709YCbCr2rgba(macro_u.g, macro_u.b, macro_u.r, alpha); 
-		pixel_ur = rec709YCbCr2rgba(macro_u.a, (macro_u.b+macro_ur.b)/2, (macro_u.r+macro_ur.r)/2, alpha); 
+		pixel_ur = rec709YCbCr2rgba(macro_u.a, macro_u.b, macro_u.r, alpha); 
 	}
 	vec4 camera2 = bilinear(pixel, pixel_u, pixel_ur, pixel_r, off);
 	vec3 color = camera.rgb;
@@ -243,18 +233,9 @@ void main(void)
         fragColor = vec4(fragColor.rgb * fragColor.a*mask.a, fragColor.a*mask.a); // masking + alpha multiply
      	vec4 foregroundOpaque = vec4(foreground.rgb, 1.0);
 	    fragColor = mix(fragColor, foregroundOpaque, foreground.a);//foreground add
-        if (fragColor.a != 0.0f) fragColor = vec4(fragColor.rgb / fragColor.a, sqrt(fragColor.a));//divide alpha
 	}
+    if (fragColor.a != 0.0f) fragColor = vec4(fragColor.rgb / fragColor.a, sqrt(fragColor.a));//divide alpha
 
-    if (iMode == 1) 
-	{
-        vec4 black = vec4(0.0,0.0,0.0,1.0);
-	    fragColor = mix(black,fragColor, fragColor.a);//key over black
-		fragColor = vec4(fragColor.rgb,1.0);
-	}
-
-
-   // fragColor = texelFetch(iForeground, texPos2, 0); test foreground bitmap over
 	//fragColor = vec4(gl_FragCoord.x/1000, gl_FragCoord.y/1000, 0, 1);
     //fragColor = vs_color;
     //fragColor = texelFetch(iYUYVtex, texPos, 0); //direct YUYV camera source

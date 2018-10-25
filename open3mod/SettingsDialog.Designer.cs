@@ -813,8 +813,6 @@
             // checkBoxCancelColorRange
             // 
             this.checkBoxCancelColorRange.AutoSize = true;
-            this.checkBoxCancelColorRange.Checked = true;
-            this.checkBoxCancelColorRange.CheckState = System.Windows.Forms.CheckState.Checked;
             this.checkBoxCancelColorRange.DataBindings.Add(new System.Windows.Forms.Binding("Checked", global::open3mod.GraphicsSettings.Default, "CancelColorRange", true, System.Windows.Forms.DataSourceUpdateMode.OnPropertyChanged));
             this.checkBoxCancelColorRange.Location = new System.Drawing.Point(137, 241);
             this.checkBoxCancelColorRange.Name = "checkBoxCancelColorRange";
@@ -830,14 +828,14 @@
             this.trackBarKeyingVSensitivity.Location = new System.Drawing.Point(24, 191);
             this.trackBarKeyingVSensitivity.Maximum = 100;
             this.trackBarKeyingVSensitivity.Name = "trackBarKeyingVSensitivity";
-            this.trackBarKeyingVSensitivity.Size = new System.Drawing.Size(482, 45);
+            this.trackBarKeyingVSensitivity.Size = new System.Drawing.Size(455, 45);
             this.trackBarKeyingVSensitivity.TabIndex = 23;
             this.trackBarKeyingVSensitivity.Value = 50;
             // 
             // label15
             // 
             this.label15.AutoSize = true;
-            this.label15.Location = new System.Drawing.Point(293, 73);
+            this.label15.Location = new System.Drawing.Point(265, 73);
             this.label15.Name = "label15";
             this.label15.Size = new System.Drawing.Size(89, 13);
             this.label15.TabIndex = 13;
@@ -846,7 +844,7 @@
             // label14
             // 
             this.label14.AutoSize = true;
-            this.label14.Location = new System.Drawing.Point(293, 8);
+            this.label14.Location = new System.Drawing.Point(265, 8);
             this.label14.Name = "label14";
             this.label14.Size = new System.Drawing.Size(89, 13);
             this.label14.TabIndex = 22;
@@ -855,35 +853,35 @@
             // labelV
             // 
             this.labelV.AutoSize = true;
-            this.labelV.Location = new System.Drawing.Point(233, 121);
+            this.labelV.Location = new System.Drawing.Point(237, 121);
             this.labelV.Name = "labelV";
-            this.labelV.Size = new System.Drawing.Size(29, 13);
+            this.labelV.Size = new System.Drawing.Size(19, 13);
             this.labelV.TabIndex = 21;
-            this.labelV.Text = "V:50";
+            this.labelV.Text = "58";
             // 
             // labelS
             // 
             this.labelS.AutoSize = true;
-            this.labelS.Location = new System.Drawing.Point(233, 73);
+            this.labelS.Location = new System.Drawing.Point(237, 73);
             this.labelS.Name = "labelS";
-            this.labelS.Size = new System.Drawing.Size(29, 13);
+            this.labelS.Size = new System.Drawing.Size(19, 13);
             this.labelS.TabIndex = 20;
-            this.labelS.Text = "S:54";
+            this.labelS.Text = "47";
             // 
             // labelH
             // 
             this.labelH.AutoSize = true;
-            this.labelH.Location = new System.Drawing.Point(233, 27);
+            this.labelH.Location = new System.Drawing.Point(237, 27);
             this.labelH.Name = "labelH";
-            this.labelH.Size = new System.Drawing.Size(36, 13);
+            this.labelH.Size = new System.Drawing.Size(25, 13);
             this.labelH.TabIndex = 19;
-            this.labelH.Text = "H:116";
+            this.labelH.Text = "111";
             // 
             // trackBarKeyingTreshold
             // 
             this.trackBarKeyingTreshold.BackColor = System.Drawing.Color.White;
             this.trackBarKeyingTreshold.DataBindings.Add(new System.Windows.Forms.Binding("Value", global::open3mod.GraphicsSettings.Default, "KeyingTreshold", true, System.Windows.Forms.DataSourceUpdateMode.OnPropertyChanged));
-            this.trackBarKeyingTreshold.Location = new System.Drawing.Point(295, 26);
+            this.trackBarKeyingTreshold.Location = new System.Drawing.Point(268, 26);
             this.trackBarKeyingTreshold.Maximum = 100;
             this.trackBarKeyingTreshold.Name = "trackBarKeyingTreshold";
             this.trackBarKeyingTreshold.Size = new System.Drawing.Size(211, 45);
@@ -894,7 +892,7 @@
             // 
             this.trackBarKeyingSoftness.BackColor = System.Drawing.Color.White;
             this.trackBarKeyingSoftness.DataBindings.Add(new System.Windows.Forms.Binding("Value", global::open3mod.GraphicsSettings.Default, "KeyingSoftness", true, System.Windows.Forms.DataSourceUpdateMode.OnPropertyChanged));
-            this.trackBarKeyingSoftness.Location = new System.Drawing.Point(295, 93);
+            this.trackBarKeyingSoftness.Location = new System.Drawing.Point(268, 93);
             this.trackBarKeyingSoftness.Maximum = 100;
             this.trackBarKeyingSoftness.Name = "trackBarKeyingSoftness";
             this.trackBarKeyingSoftness.Size = new System.Drawing.Size(211, 45);
@@ -908,7 +906,7 @@
             this.trackBarCancelColorPower.Location = new System.Drawing.Point(21, 326);
             this.trackBarCancelColorPower.Maximum = 100;
             this.trackBarCancelColorPower.Name = "trackBarCancelColorPower";
-            this.trackBarCancelColorPower.Size = new System.Drawing.Size(485, 45);
+            this.trackBarCancelColorPower.Size = new System.Drawing.Size(458, 45);
             this.trackBarCancelColorPower.TabIndex = 15;
             this.trackBarCancelColorPower.Value = 50;
             // 
@@ -946,7 +944,7 @@
             this.label10.Name = "label10";
             this.label10.Size = new System.Drawing.Size(188, 13);
             this.label10.TabIndex = 11;
-            this.label10.Text = "Keying color - HSV (Green=116,54,50)";
+            this.label10.Text = "Keying color - HSV (Green=111,47,58)";
             // 
             // trackBarKeyingColorV
             // 

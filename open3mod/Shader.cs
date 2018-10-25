@@ -127,7 +127,7 @@ namespace open3mod
                 Debug.WriteLine(GL.GetShaderInfoLog(_vs));
 
                 Dispose();
-                throw new Exception("failed to compile 'vertex shader");
+                throw new Exception("failed to compile vertex shader");
             }
 
             _fs = GL.CreateShader(ShaderType.FragmentShader);

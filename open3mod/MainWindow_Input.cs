@@ -246,7 +246,7 @@ namespace open3mod
             {
                 var view = UiState.ActiveTab.ActiveViews[(int)index];
                 Debug.Assert(view != null);
-               if (_renderer != null) _renderer.OnMouseClick(e, view.Bounds, index);
+                _renderer.OnMouseClick(e, view.Bounds, index);
             }           
         }
 

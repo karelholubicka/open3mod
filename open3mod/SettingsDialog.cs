@@ -247,17 +247,17 @@ namespace open3mod
 
         private void trackBarKeyingColorH_ValueChanged(object sender, EventArgs e)
         {
-            labelH.Text = "H:" + trackBarKeyingColorH.Value.ToString();
+            labelH.Text = trackBarKeyingColorH.Value.ToString();
         }
 
         private void trackBarKeyingColorS_ValueChanged(object sender, EventArgs e)
         {
-            labelS.Text = "S:" + trackBarKeyingColorS.Value.ToString();
+            labelS.Text = trackBarKeyingColorS.Value.ToString();
         }
 
         private void trackBarKeyingColorV_ValueChanged(object sender, EventArgs e)
         {
-            labelV.Text = "V:"+trackBarKeyingColorV.Value.ToString();
+            labelV.Text = trackBarKeyingColorV.Value.ToString();
         }
 
         private void UseTrackingCheckbox_CheckedChanged(object sender, EventArgs e)

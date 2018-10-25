@@ -48,7 +48,7 @@ namespace open3mod
     public partial class MainWindow : Form
     {
         bool firstRun = true;
-        public const bool useIO = true;
+        public const bool useIO = false;
 
         public static string exePath = "e:\\vr-software\\open3mod-master\\open3mod\\";
         public static string[] recentDataSeparator = new string[] { "::" };
@@ -296,8 +296,8 @@ namespace open3mod
                 //      capturePreview2.StartCapture);
                 DelayExecution(TimeSpan.FromSeconds(delay+2),
                     GenlockOn);
-                DelayExecution(TimeSpan.FromSeconds(delay+3),
-                   outputGenerator.StartRunning);
+              //  DelayExecution(TimeSpan.FromSeconds(delay+3),
+                //    outputGenerator.StartRunning);
             }
         }
 

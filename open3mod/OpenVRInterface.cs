@@ -174,18 +174,8 @@ namespace open3mod
                         }
                         else
                         {
-                            if (displayOrder[2] > OpenVR.k_unMaxTrackedDeviceCount)
-                            {
-                                displayOrder[2] = i;
-                                if (string.Compare(deviceSNs[1], deviceSNs[2]) > 0)
-                                    {
-                                    displayOrder[2] = displayOrder[1];
-                                    displayOrder[1] = i;
-                                }
-
-                            }
+                            if (displayOrder[2] > OpenVR.k_unMaxTrackedDeviceCount) displayOrder[2] = i;
                         }
-                        //one controller is always #1, two are always in the same order
                         lensToGround[i] = Matrix4.CreateTranslation(0, -lensAboveGround , 0);
                         trackerToCamera[i] = Matrix4.CreateTranslation(0, -trackerAboveLens, 0); //first we want it NOT to be zero
                     }
