@@ -1,12 +1,29 @@
-jak vypadá Janssen nové studio v renderu
-spustit ve studiu - zkontrolovat chromakey shader
+resize minimize - size 0 /incomplete attachment
 
-framebuffers allocation+structure
+jak vypadá Janssen nové studio v renderu-vyrobit...f/bg/gr atd
+test - nastavení FOV pro kameru+screen adekvátnì-testovací studio vs reál pøedmìt(?)
+= do foregroundu render VR pøedmìtù volitelnì= kontrola FOV pøedmìty pøes obraz
+
+doplnit studio i po stranách
+noise filter/gauss na šum klíèe-mean 3x3-5x5-pøed, nebo po klíèi??
+shader pøedìlat na itexturesize+
+je klíè èistý jako v ediusu?
+
+
+shadery 2 - jeden se switchem, resamplingem a blk,
+druhý bez resamplu a s blurem??
+
+
+
+pøepínání a pøiøazení ovladaèù - sna >sn b
 
 støih do druhé kamery buttonem ovladaèe
 zpoždìní nastavit až s klikem, ne jen držením nad
+pojistka resetu studia
 
-test - nastavení FOV pro kameru+screen adekvátnì-testovací studio vs reál pøedmìt(?)
+
+místnosti ze steamu najít - výmìna??
+
 
 load fps+video output sizes z inputu BMD / scalable
 destroy všech kontextù
@@ -19,9 +36,8 @@ sample hodnoty plátna pro klíè??
 mìøení rozdílu cam 1a 2 - úprava zpoždìní scanu pøi pøestøihu(!!), 
 sync druhá kamera - poèítání frame kamery#1, k tomu kdy dorazil frame2, v rendereru kontrola stejného èísla+operace, co když ne, 
 
-
-
-
+Settings:
+c:\Users\Studio\AppData\Local\open3mod\open3mod.exe_Url_stpzoig5vx2tayffj4l0jhaydooqznaj\
 Textury v Blenderu musí mít UV, tj až po Unwrappingu - jinak UV nemají
 
 

@@ -168,7 +168,7 @@ namespace open3mod
             }
             if ((contIndex == 0) || (contIndex >= OpenVR.k_unMaxTrackedDeviceCount))
             {
-                //    throw new Exception("Controller is not ON!");
+                //    throw new Exception("No controller is ON!");
                 contIndex = 0;
             }
          }

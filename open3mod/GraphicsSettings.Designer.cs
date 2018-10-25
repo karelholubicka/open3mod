@@ -12,7 +12,7 @@ namespace open3mod {
     
     
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
-    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("Microsoft.VisualStudio.Editors.SettingsDesigner.SettingsSingleFileGenerator", "15.8.0.0")]
+    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("Microsoft.VisualStudio.Editors.SettingsDesigner.SettingsSingleFileGenerator", "15.6.0.0")]
     internal sealed partial class GraphicsSettings : global::System.Configuration.ApplicationSettingsBase {
         
         private static GraphicsSettings defaultInstance = ((GraphicsSettings)(global::System.Configuration.ApplicationSettingsBase.Synchronized(new GraphicsSettings())));
@@ -121,7 +121,7 @@ namespace open3mod {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("111")]
+        [global::System.Configuration.DefaultSettingValueAttribute("116")]
         public int KeyingColorH {
             get {
                 return ((int)(this["KeyingColorH"]));
@@ -133,7 +133,7 @@ namespace open3mod {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("47")]
+        [global::System.Configuration.DefaultSettingValueAttribute("54")]
         public int KeyingColorS {
             get {
                 return ((int)(this["KeyingColorS"]));
@@ -145,7 +145,7 @@ namespace open3mod {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("58")]
+        [global::System.Configuration.DefaultSettingValueAttribute("50")]
         public int KeyingColorV {
             get {
                 return ((int)(this["KeyingColorV"]));
